@@ -11,6 +11,7 @@ export const uploadStudentPhoto = async (req, res) => {
   try {
     const studentId = req.user.roleDoc._id;
 
+    // ✅ CHANGED: Use multer file
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -18,12 +19,16 @@ export const uploadStudentPhoto = async (req, res) => {
       });
     }
 
-    // Upload to Cloudinary
+    console.log("📸 Uploading photo to Cloudinary...");
+
+    // ✅ Use req.file.path (multer)
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "careerlink/student-photos",
-      width: 500,
-      height: 500,
-      crop: "fill",
+      resource_type: "image",
+      transformation: [
+        { width: 500, height: 500, crop: "fill" },
+        { quality: "auto" },
+      ],
     });
 
     // Delete old photo if exists
@@ -39,10 +44,10 @@ export const uploadStudentPhoto = async (req, res) => {
     };
     await student.save();
 
-    // Delete local file
+    // ✅ Delete temp file
     fs.unlinkSync(req.file.path);
 
-    console.log("✅ Photo uploaded:", result.secure_url); // Debug log
+    console.log("✅ Photo uploaded:", result.secure_url);
 
     res.json({
       success: true,
@@ -54,6 +59,7 @@ export const uploadStudentPhoto = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload photo error:", error);
+    // Clean up temp file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -71,6 +77,7 @@ export const uploadResume = async (req, res) => {
   try {
     const studentId = req.user.roleDoc._id;
 
+    // ✅ CHANGED: Use multer file
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -84,11 +91,11 @@ export const uploadResume = async (req, res) => {
     let parsedData;
     try {
       console.log("🤖 Parsing resume with Gemini...");
+      // ✅ Use req.file.path
       parsedData = await parseResume(req.file.path);
       console.log("✅ Resume parsed successfully!");
     } catch (parseError) {
       console.error("❌ Resume parsing failed:", parseError.message);
-      // Continue even if parsing fails
     }
 
     // Upload to Cloudinary
@@ -118,18 +125,14 @@ export const uploadResume = async (req, res) => {
     if (parsedData) {
       console.log("📝 Auto-filling profile from resume...");
 
-      // Update skills
       if (parsedData.skills?.length > 0) {
         const newSkills = [
           ...new Set([...student.skills, ...parsedData.skills]),
         ];
-        console.log(`Skills: ${student.skills.length} → ${newSkills.length}`);
         student.skills = newSkills;
       }
 
-      // Update projects
       if (parsedData.projects?.length > 0) {
-        console.log(`Adding ${parsedData.projects.length} projects`);
         parsedData.projects.forEach((proj) => {
           student.projects.push({
             title: proj.title,
@@ -139,11 +142,7 @@ export const uploadResume = async (req, res) => {
         });
       }
 
-      // Update certifications
       if (parsedData.certifications?.length > 0) {
-        console.log(
-          `Adding ${parsedData.certifications.length} certifications`,
-        );
         parsedData.certifications.forEach((cert) => {
           student.certifications.push({
             name: cert.name,
@@ -155,7 +154,7 @@ export const uploadResume = async (req, res) => {
 
     await student.save();
 
-    // Delete local file
+    // ✅ Delete temp file
     fs.unlinkSync(req.file.path);
 
     console.log("✅ Resume upload complete!\n");
@@ -173,6 +172,7 @@ export const uploadResume = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload resume error:", error);
+    // Clean up temp file on error
     if (req.file && fs.existsSync(req.file.path)) {
       fs.unlinkSync(req.file.path);
     }
@@ -190,6 +190,7 @@ export const uploadCompanyLogo = async (req, res) => {
   try {
     const recruiterId = req.user.roleDoc._id;
 
+    // ✅ CHANGED: Use multer file
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -197,7 +198,7 @@ export const uploadCompanyLogo = async (req, res) => {
       });
     }
 
-    // Upload to Cloudinary
+    // ✅ Use req.file.path
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "careerlink/company-logos",
       width: 300,
@@ -205,7 +206,6 @@ export const uploadCompanyLogo = async (req, res) => {
       crop: "fit",
     });
 
-    // Delete old logo if exists
     const recruiter = await Recruiter.findById(recruiterId);
     if (recruiter.companyInfo?.companyLogo?.publicId) {
       await cloudinary.uploader.destroy(
@@ -213,14 +213,13 @@ export const uploadCompanyLogo = async (req, res) => {
       );
     }
 
-    // Update recruiter profile
     recruiter.companyInfo.companyLogo = {
       url: result.secure_url,
       publicId: result.public_id,
     };
     await recruiter.save();
 
-    // Delete local file
+    // ✅ Delete temp file
     fs.unlinkSync(req.file.path);
 
     res.json({
@@ -230,7 +229,9 @@ export const uploadCompanyLogo = async (req, res) => {
     });
   } catch (error) {
     console.error("Upload logo error:", error);
-    if (req.file) fs.unlinkSync(req.file.path);
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
     res.status(500).json({
       success: false,
       message: "Failed to upload logo",
@@ -238,9 +239,7 @@ export const uploadCompanyLogo = async (req, res) => {
   }
 };
 
-// @desc    Delete student photo
-// @route   DELETE /api/upload/photo
-// @access  Private (Student)
+// Delete functions remain the same
 export const deleteStudentPhoto = async (req, res) => {
   try {
     const studentId = req.user.roleDoc._id;
@@ -270,9 +269,6 @@ export const deleteStudentPhoto = async (req, res) => {
   }
 };
 
-// @desc    Delete resume
-// @route   DELETE /api/upload/resume
-// @access  Private (Student)
 export const deleteResume = async (req, res) => {
   try {
     const studentId = req.user.roleDoc._id;

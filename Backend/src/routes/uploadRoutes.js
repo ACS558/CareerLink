@@ -8,44 +8,16 @@ import {
   deleteResume,
 } from "../controllers/uploadController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
-import { roleMiddleware } from "../middleware/roleMiddleware.js";
 import upload from "../middleware/upload.js";
 
-// Student routes
-router.post(
-  "/photo",
-  authMiddleware,
-  roleMiddleware("student"),
-  upload.single("photo"),
-  uploadStudentPhoto,
-);
-router.post(
-  "/resume",
-  authMiddleware,
-  roleMiddleware("student"),
-  upload.single("resume"),
-  uploadResume,
-);
-router.delete(
-  "/photo",
-  authMiddleware,
-  roleMiddleware("student"),
-  deleteStudentPhoto,
-);
-router.delete(
-  "/resume",
-  authMiddleware,
-  roleMiddleware("student"),
-  deleteResume,
-);
+// Auth for all routes
+router.use(authMiddleware);
 
-// Recruiter routes
-router.post(
-  "/logo",
-  authMiddleware,
-  roleMiddleware("recruiter"),
-  upload.single("logo"),
-  uploadCompanyLogo,
-);
+// ✅ Multer for all uploads
+router.post("/photo", upload.single("photo"), uploadStudentPhoto);
+router.post("/resume", upload.single("resume"), uploadResume);
+router.post("/logo", upload.single("logo"), uploadCompanyLogo);
+router.delete("/photo", deleteStudentPhoto);
+router.delete("/resume", deleteResume);
 
 export default router;

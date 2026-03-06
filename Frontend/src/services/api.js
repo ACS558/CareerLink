@@ -85,6 +85,9 @@ export const studentAPI = {
 
   // Get profile completion
   getProfileCompletion: () => api.get("/student/profile/completion"),
+  getDashboard: () => api.get("/student/dashboard"),
+  requestExtension: (reason) =>
+    api.post("/student/request-extension", { reason }),
 };
 
 // ============ RECRUITER APIs ============

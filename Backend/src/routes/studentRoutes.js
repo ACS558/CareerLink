@@ -3,6 +3,8 @@ import {
   getStudentProfile,
   updateStudentProfile,
   getProfileCompletion,
+  getStudentDashboard,
+  requestAccountExtension,
 } from "../controllers/studentController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
@@ -17,5 +19,7 @@ router.use(roleMiddleware(["student"]));
 router.get("/profile", getStudentProfile);
 router.put("/profile", updateStudentProfile);
 router.get("/profile/completion", getProfileCompletion);
+router.get("/dashboard", authMiddleware, getStudentDashboard);
+router.post("/request-extension", authMiddleware, requestAccountExtension);
 
 export default router;

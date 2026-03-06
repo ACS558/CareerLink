@@ -1,63 +1,58 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 
-// Configure storage
+// ✅ Create uploads directory if it doesn't exist
+const uploadsDir = "./uploads";
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// ✅ Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/");
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
-    );
+    cb(null, uniqueSuffix + path.extname(file.originalname));
   },
 });
 
-// File filter
+// ✅ File filter
 const fileFilter = (req, file, cb) => {
-  // For resume uploads
-  if (file.fieldname === "resume") {
-    const allowedTypes = /pdf|doc|docx/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase(),
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (extname && mimetype) {
-      return cb(null, true);
-    } else {
-      cb(new Error("Only PDF, DOC, and DOCX files are allowed for resumes"));
-    }
-  }
-
-  // For image uploads (photos/logos)
+  // Images
   if (file.fieldname === "photo" || file.fieldname === "logo") {
-    const allowedTypes = /jpeg|jpg|png|webp/;
-    const extname = allowedTypes.test(
-      path.extname(file.originalname).toLowerCase(),
-    );
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (extname && mimetype) {
-      return cb(null, true);
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
     } else {
-      cb(new Error("Only JPEG, PNG, and WEBP images are allowed"));
+      cb(new Error("Only image files are allowed"));
     }
   }
-
-  cb(null, true);
+  // Documents
+  else if (file.fieldname === "resume") {
+    const allowedTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PDF, DOC, DOCX files are allowed"));
+    }
+  } else {
+    cb(null, true);
+  }
 };
 
-// Create multer upload instance
+// ✅ Create multer instance
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
+    fileSize: 5 * 1024 * 1024, // 5MB
   },
   fileFilter: fileFilter,
 });
 
 export default upload;
-        

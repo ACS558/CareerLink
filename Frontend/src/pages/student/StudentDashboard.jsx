@@ -1,35 +1,40 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { studentAPI } from "../../services/api";
-import {
-  getCompletionColor,
-  getCompletionBadgeColor,
-} from "../../utils/helpers";
+import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/common/Navbar";
 import Sidebar from "../../components/common/Sidebar";
-import toast from "react-hot-toast";
+import api from "../../services/api";
+import {
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 const StudentDashboard = () => {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState(null);
-  const [completion, setCompletion] = useState(null);
+  const navigate = useNavigate();
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchData();
+    fetchDashboardStats();
   }, []);
 
-  const fetchData = async () => {
+  const fetchDashboardStats = async () => {
     try {
-      const [profileRes, completionRes] = await Promise.all([
-        studentAPI.getProfile(),
-        studentAPI.getProfileCompletion(),
-      ]);
-      setProfile(profileRes.data.profile);
-      setCompletion(completionRes.data);
+      setLoading(true);
+      const response = await api.get("/analytics/student/dashboard");
+      if (response.data.success) {
+        setStats(response.data.stats);
+      }
     } catch (error) {
-      console.error("Fetch error:", error);
+      console.error("Error fetching dashboard stats:", error);
     } finally {
       setLoading(false);
     }
@@ -37,435 +42,375 @@ const StudentDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex">
+          <Sidebar />
+          <div className="flex-1 p-8">
+            <div className="flex items-center justify-center h-96">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Loading dashboard...</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  // Colors for charts
+  const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
+
+  // Prepare data for pie chart
+  const statusData = [
+    { name: "Applied", value: stats?.appliedCount || 0 },
+    { name: "Shortlisted", value: stats?.shortlistedCount || 0 },
+    { name: "Selected", value: stats?.selectedCount || 0 },
+    { name: "Rejected", value: stats?.rejectedCount || 0 },
+  ].filter((item) => item.value > 0);
+
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <Navbar />
       <div className="flex">
         <Sidebar />
-        <main className="flex-1 p-8">
-          {/* Profile Incomplete Toast Banner */}
-          {completion && completion.completionPercentage < 80 && (
-            <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <span className="text-2xl">⚠️</span>
-                <div>
-                  <p className="text-yellow-800 font-semibold">
-                    Please complete your profile
-                  </p>
-                  <p className="text-yellow-700 text-sm">
-                    Your profile is {completion.completionPercentage}% complete.
-                    Complete it to access all features.
-                  </p>
-                </div>
-              </div>
-              <Link
-                to="/student/profile"
-                className="bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors text-sm font-medium whitespace-nowrap"
-              >
-                Complete Profile
-              </Link>
-            </div>
-          )}
-
-          {/* Welcome Header */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">
-              Welcome, {profile?.personalInfo?.firstName || "Student"} 👋
-            </h1>
+        <div className="flex-1 p-6 lg:p-8">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-gray-600 mt-1">
-              Here's your placement dashboard overview
+              Welcome back! Here's your placement overview
             </p>
           </div>
 
-          {/* Stats Cards Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            {/* Profile Completion */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-gray-500">Profile</p>
-                <span className="text-lg">📊</span>
-              </div>
-              <p
-                className={`text-2xl font-bold ${getCompletionColor(completion?.completionPercentage || 0)}`}
-              >
-                {completion?.completionPercentage || 0}%
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Complete</p>
-              {/* Progress Bar */}
-              <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full ${
-                    (completion?.completionPercentage || 0) >= 80
-                      ? "bg-green-500"
-                      : (completion?.completionPercentage || 0) >= 50
-                        ? "bg-yellow-500"
-                        : "bg-red-500"
-                  }`}
-                  style={{ width: `${completion?.completionPercentage || 0}%` }}
-                ></div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {/* Total Applications */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">
+                    Total Applications
+                  </p>
+                  <p className="text-3xl font-bold text-gray-900 mt-2">
+                    {stats?.totalApplications || 0}
+                  </p>
+                </div>
+                <div className="bg-blue-100 p-3 rounded-full">
+                  <svg
+                    className="w-8 h-8 text-blue-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                </div>
               </div>
             </div>
 
-            {/* Registration Number */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-gray-500">Reg. Number</p>
-                <span className="text-lg">🎫</span>
+            {/* Shortlisted */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">
+                    Shortlisted
+                  </p>
+                  <p className="text-3xl font-bold text-green-600 mt-2">
+                    {stats?.shortlistedCount || 0}
+                  </p>
+                </div>
+                <div className="bg-green-100 p-3 rounded-full">
+                  <svg
+                    className="w-8 h-8 text-green-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                </div>
               </div>
-              <p className="text-xl font-bold text-gray-900">
-                {profile?.registrationNumber || "N/A"}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Your ID</p>
             </div>
 
-            {/* CGPA */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-gray-500">CGPA</p>
-                <span className="text-lg">🎓</span>
+            {/* Selected */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">Selected</p>
+                  <p className="text-3xl font-bold text-purple-600 mt-2">
+                    {stats?.selectedCount || 0}
+                  </p>
+                </div>
+                <div className="bg-purple-100 p-3 rounded-full">
+                  <svg
+                    className="w-8 h-8 text-purple-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                    />
+                  </svg>
+                </div>
               </div>
-              <p className="text-2xl font-bold text-gray-900">
-                {profile?.academicInfo?.cgpa || "N/A"}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Out of 10.0</p>
             </div>
 
-            {/* Skills Count */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-medium text-gray-500">Skills</p>
-                <span className="text-lg">💻</span>
+            {/* Avg ATS Score */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-600 font-medium">
+                    Avg ATS Score
+                  </p>
+                  <p className="text-3xl font-bold text-orange-600 mt-2">
+                    {stats?.avgATSScore || 0}
+                  </p>
+                </div>
+                <div className="bg-orange-100 p-3 rounded-full">
+                  <svg
+                    className="w-8 h-8 text-orange-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
+                </div>
               </div>
-              <p className="text-2xl font-bold text-gray-900">
-                {profile?.skills?.length || 0}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">Added</p>
             </div>
           </div>
 
-          {/* Two Column Layout: Profile Summary + Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Profile Summary Card */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Profile Summary
-                </h2>
-                <Link
-                  to="/student/profile"
-                  className="text-primary-600 text-sm font-medium hover:text-primary-700"
-                >
-                  Edit →
-                </Link>
-              </div>
-
-              <div className="space-y-4">
-                {/* Name & Reg */}
-                <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center overflow-hidden">
-                    {profile?.photo?.url ? (
-                      <img
-                        src={profile.photo.url}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-2xl font-bold text-primary-600">
-                        {(profile?.personalInfo?.firstName || "?")[0]}
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">
-                      {profile?.personalInfo?.firstName}{" "}
-                      {profile?.personalInfo?.lastName}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {profile?.registrationNumber}
-                    </p>
-                  </div>
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* Application Trend Chart */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Application Trend (Last 30 Days)
+              </h3>
+              {stats?.applicationTrend && stats.applicationTrend.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={stats.applicationTrend}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => {
+                        const date = new Date(value);
+                        return `${date.getMonth() + 1}/${date.getDate()}`;
+                      }}
+                    />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#3B82F6"
+                      strokeWidth={2}
+                      name="Applications"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-64 text-gray-500">
+                  <p>No application data yet</p>
                 </div>
+              )}
+            </div>
 
-                {/* Academic Info */}
-                <div className="border-t pt-3 space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">Branch</span>
-                    <span className="text-sm font-medium text-gray-700">
-                      {profile?.academicInfo?.branch || "Not set"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">Semester</span>
-                    <span className="text-sm font-medium text-gray-700">
-                      {profile?.academicInfo?.semester || "Not set"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">
-                      Graduation Year
-                    </span>
-                    <span className="text-sm font-medium text-gray-700">
-                      {profile?.academicInfo?.graduationYear || "Not set"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">
-                      Placement Status
-                    </span>
-                    <span
-                      className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        profile?.placementStatus === "placed"
-                          ? "bg-green-100 text-green-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
+            {/* Status Distribution Chart */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Application Status Distribution
+              </h3>
+              {statusData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <PieChart>
+                    <Pie
+                      data={statusData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) =>
+                        `${name}: ${(percent * 100).toFixed(0)}%`
+                      }
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
                     >
-                      {profile?.placementStatus === "placed"
-                        ? "Placed"
-                        : "Unplaced"}
+                      {statusData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-64 text-gray-500">
+                  <p>No applications yet</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Applications & Profile Completion */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Recent Applications */}
+            <div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Recent Applications
+                </h3>
+                <button
+                  onClick={() => navigate("/student/applications")}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                >
+                  View All →
+                </button>
+              </div>
+              {stats?.recentApplications &&
+              stats.recentApplications.length > 0 ? (
+                <div className="space-y-3">
+                  {stats.recentApplications.map((app, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">
+                          {app.jobTitle}
+                        </p>
+                        <p className="text-sm text-gray-600">{app.company}</p>
+                      </div>
+                      <div className="text-right mr-4">
+                        <p className="text-sm font-medium text-gray-900">
+                          ATS: {app.atsScore}/100
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(app.appliedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          app.status === "selected"
+                            ? "bg-purple-100 text-purple-700"
+                            : app.status === "shortlisted"
+                              ? "bg-green-100 text-green-700"
+                              : app.status === "rejected"
+                                ? "bg-red-100 text-red-700"
+                                : "bg-blue-100 text-blue-700"
+                        }`}
+                      >
+                        {app.status.charAt(0).toUpperCase() +
+                          app.status.slice(1)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <svg
+                    className="w-16 h-16 mx-auto mb-4 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  <p>No applications yet</p>
+                  <button
+                    onClick={() => navigate("/student/jobs")}
+                    className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Browse Jobs
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Profile Completion */}
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Profile Completion
+              </h3>
+              <div className="flex items-center justify-center mb-4">
+                <div className="relative w-32 h-32">
+                  <svg className="w-full h-full transform -rotate-90">
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r="56"
+                      stroke="#E5E7EB"
+                      strokeWidth="8"
+                      fill="none"
+                    />
+                    <circle
+                      cx="64"
+                      cy="64"
+                      r="56"
+                      stroke="#3B82F6"
+                      strokeWidth="8"
+                      fill="none"
+                      strokeDasharray={`${2 * Math.PI * 56}`}
+                      strokeDashoffset={`${2 * Math.PI * 56 * (1 - (stats?.profileCompletion || 0) / 100)}`}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-2xl font-bold text-gray-900">
+                      {stats?.profileCompletion || 0}%
                     </span>
                   </div>
                 </div>
-
-                {/* Skills */}
-                {profile?.skills?.length > 0 && (
-                  <div className="border-t pt-3">
-                    <p className="text-sm text-gray-500 mb-2">Skills</p>
-                    <div className="flex flex-wrap gap-2">
-                      {profile.skills.slice(0, 6).map((skill, index) => (
-                        <span
-                          key={index}
-                          className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded-full"
-                        >
-                          {skill}
-                        </span>
-                      ))}
-                      {profile.skills.length > 6 && (
-                        <span className="text-xs text-gray-500">
-                          +{profile.skills.length - 6} more
-                        </span>
-                      )}
-                    </div>
-                  </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center text-sm">
+                  <div
+                    className={`w-2 h-2 rounded-full mr-2 ${stats?.profileCompletion >= 100 ? "bg-green-500" : "bg-gray-300"}`}
+                  ></div>
+                  <span className="text-gray-600">Profile completed</span>
+                </div>
+                {stats?.profileCompletion < 100 && (
+                  <button
+                    onClick={() => navigate("/student/profile")}
+                    className="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    Complete Profile
+                  </button>
                 )}
               </div>
             </div>
-
-            {/* Profile Completion Breakdown */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Profile Completion
-                </h2>
-                <span
-                  className={`text-sm font-bold px-3 py-1 rounded-full ${getCompletionBadgeColor(completion?.completionPercentage || 0)}`}
-                >
-                  {completion?.completionPercentage || 0}%
-                </span>
-              </div>
-
-              <div className="space-y-4">
-                {completion?.breakdown &&
-                  Object.entries(completion.breakdown).map(([key, value]) => {
-                    const labels = {
-                      personalInfo: { label: "Personal Info", icon: "👤" },
-                      academicInfo: { label: "Academic Info", icon: "📚" },
-                      skills: { label: "Skills", icon: "💻" },
-                      projects: { label: "Projects", icon: "🛠️" },
-                      internships: { label: "Internships", icon: "🏢" },
-                      certifications: { label: "Certifications", icon: "🏆" },
-                      socialLinks: { label: "Social Links", icon: "🔗" },
-                    };
-                    const item = labels[key];
-                    if (!item) return null;
-                    return (
-                      <div key={key} className="flex items-center space-x-3">
-                        <span className="text-lg w-7 text-center">
-                          {item.icon}
-                        </span>
-                        <div className="flex-1">
-                          <div className="flex justify-between mb-1">
-                            <span className="text-sm text-gray-700">
-                              {item.label}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {value.percentage}%
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${value.completed ? "bg-green-500" : "bg-gray-300"}`}
-                              style={{ width: value.completed ? "100%" : "0%" }}
-                            ></div>
-                          </div>
-                        </div>
-                        <span className="text-lg">
-                          {value.completed ? "✅" : "⭕"}
-                        </span>
-                      </div>
-                    );
-                  })}
-              </div>
-
-              {completion?.completionPercentage < 80 && (
-                <Link
-                  to="/student/profile"
-                  className="mt-6 block w-full text-center btn-primary py-2"
-                >
-                  Complete Your Profile
-                </Link>
-              )}
-            </div>
           </div>
-
-          {/* Projects & Internships Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Projects */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Projects
-                </h2>
-                <span className="text-sm text-gray-500">
-                  {profile?.projects?.length || 0}
-                </span>
-              </div>
-              {profile?.projects?.length > 0 ? (
-                <div className="space-y-3">
-                  {profile.projects.map((project, index) => (
-                    <div
-                      key={index}
-                      className="border border-gray-100 rounded-lg p-3"
-                    >
-                      <p className="font-medium text-gray-900 text-sm">
-                        {project.title}
-                      </p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {project.description?.substring(0, 60)}...
-                      </p>
-                      {project.liveLink && (
-                        <a
-                          href={project.liveLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary-600 hover:underline mt-1 inline-block"
-                        >
-                          Live Link →
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-400 text-sm">No projects added yet</p>
-                  <Link
-                    to="/student/profile"
-                    className="text-primary-600 text-sm hover:underline mt-1 inline-block"
-                  >
-                    Add Project
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* Internships */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Internships
-                </h2>
-                <span className="text-sm text-gray-500">
-                  {profile?.internships?.length || 0}
-                </span>
-              </div>
-              {profile?.internships?.length > 0 ? (
-                <div className="space-y-3">
-                  {profile.internships.map((intern, index) => (
-                    <div
-                      key={index}
-                      className="border border-gray-100 rounded-lg p-3"
-                    >
-                      <p className="font-medium text-gray-900 text-sm">
-                        {intern.role}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {intern.companyName}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {intern.duration}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-400 text-sm">No internships added</p>
-                  <Link
-                    to="/student/profile"
-                    className="text-primary-600 text-sm hover:underline mt-1 inline-block"
-                  >
-                    Add Internship
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* Certifications */}
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Certifications
-                </h2>
-                <span className="text-sm text-gray-500">
-                  {profile?.certifications?.length || 0}
-                </span>
-              </div>
-              {profile?.certifications?.length > 0 ? (
-                <div className="space-y-3">
-                  {profile.certifications.map((cert, index) => (
-                    <div
-                      key={index}
-                      className="border border-gray-100 rounded-lg p-3"
-                    >
-                      <p className="font-medium text-gray-900 text-sm">
-                        {cert.name}
-                      </p>
-                      <p className="text-xs text-gray-500">{cert.issuedBy}</p>
-                      {cert.credentialUrl && (
-                        <a
-                          href={cert.credentialUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary-600 hover:underline mt-1 inline-block"
-                        >
-                          View Certificate →
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-gray-400 text-sm">
-                    No certifications added
-                  </p>
-                  <Link
-                    to="/student/profile"
-                    className="text-primary-600 text-sm hover:underline mt-1 inline-block"
-                  >
-                    Add Certification
-                  </Link>
-                </div>
-              )}
-            </div>
-          </div>
-        </main>
+        </div>
       </div>
     </div>
   );

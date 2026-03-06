@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./src/config/database.js";
 import routes from "./src/routes/index.js";
+import { initializeCronJobs } from "./config/cronJobs.js";
 
 // Load environment variables
 dotenv.config();
@@ -12,6 +13,8 @@ const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+initializeCronJobs();
 
 // Middleware
 app.use(

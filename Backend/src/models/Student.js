@@ -157,11 +157,104 @@ const studentSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.Mixed,
       },
     },
+    registrationDate: {
+      type: Date,
+      required: true,
+      default: Date.now,
+      immutable: true,
+    },
+
+    expiryDate: {
+      type: Date,
+      required: true,
+    },
+
+    careerGuidanceStartDate: {
+      type: Date,
+      required: true,
+    },
+
+    accountStatus: {
+      type: String,
+      enum: ["active", "career_guidance_mode", "expired", "deleted"],
+      default: "active",
+      index: true,
+    },
+
+    // Extension requests
+    extensionRequests: [
+      {
+        reason: String,
+        status: {
+          type: String,
+          enum: ["pending", "approved", "rejected"],
+          default: "pending",
+        },
+        requestedAt: {
+          type: Date,
+          default: Date.now,
+        },
+        reviewedBy: mongoose.Schema.Types.ObjectId,
+        reviewedAt: Date,
+      },
+    ],
+
+    // Soft delete
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    deletedAt: Date,
+
+    deletionScheduledAt: Date,
   },
   {
     timestamps: true,
   },
 );
+
+studentSchema.pre("save", function (next) {
+  // Only run on NEW documents (when first creating)
+  if (this.isNew && !this.expiryDate) {
+    const regDate = this.registrationDate || new Date();
+
+    // Career guidance starts at day 365
+    const guidanceStart = new Date(regDate);
+    guidanceStart.setDate(guidanceStart.getDate() + 365);
+    this.careerGuidanceStartDate = guidanceStart;
+
+    // Account expires at day 375
+    const expiry = new Date(regDate);
+    expiry.setDate(expiry.getDate() + 375);
+    this.expiryDate = expiry;
+
+    // Deletion scheduled 90 days after expiry
+    const deletion = new Date(expiry);
+    deletion.setDate(deletion.getDate() + 90);
+    this.deletionScheduledAt = deletion;
+  }
+
+  // ✅ CRITICAL: Always call next()
+  next();
+});
+
+// ============================================
+// METHODS
+// ============================================
+studentSchema.methods.getDaysUntilExpiry = function () {
+  const today = new Date();
+  const expiry = new Date(this.expiryDate);
+  const diffTime = expiry - today;
+  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+};
+
+studentSchema.methods.isInCareerGuidanceMode = function () {
+  const today = new Date();
+  const guidanceStart = new Date(this.careerGuidanceStartDate);
+  const expiry = new Date(this.expiryDate);
+  return today >= guidanceStart && today < expiry;
+};
 
 const Student = mongoose.model("Student", studentSchema);
 

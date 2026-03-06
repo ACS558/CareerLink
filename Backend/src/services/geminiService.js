@@ -87,62 +87,6 @@ Return ONLY the JSON object, no markdown formatting, no explanations.
   }
 };
 
-// Calculate ATS score between student profile and job
-export const calculateATSScore = async (studentProfile, jobDescription) => {
-  try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-    const prompt = `
-You are an ATS (Applicant Tracking System) scoring expert. 
-
-Analyze the match between this candidate profile and job description. Return ONLY a JSON object with no additional text:
-
-CANDIDATE PROFILE:
-Name: ${studentProfile.personalInfo?.firstName} ${studentProfile.personalInfo?.lastName}
-Skills: ${studentProfile.skills?.join(", ") || "None"}
-Branch: ${studentProfile.academicInfo?.branch}
-CGPA: ${studentProfile.academicInfo?.cgpa}
-Projects: ${studentProfile.projects?.map((p) => p.title).join(", ") || "None"}
-Experience: ${studentProfile.internships?.map((i) => i.companyName).join(", ") || "None"}
-
-JOB DESCRIPTION:
-Title: ${jobDescription.title}
-Required Skills: ${jobDescription.skillsRequired?.join(", ") || "None"}
-Description: ${jobDescription.description}
-
-Return ONLY this JSON format:
-{
-  "score": 85,
-  "strengths": ["Strong technical skills", "Relevant projects"],
-  "weaknesses": ["Limited experience in XYZ", "Missing ABC skill"],
-  "recommendation": "Highly recommended" OR "Recommended" OR "Maybe" OR "Not recommended"
-}
-
-Score should be 0-100 based on:
-- Skills match (40%)
-- Experience relevance (25%)
-- Education match (20%)
-- Projects relevance (15%)
-`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    let text = response.text();
-
-    // Clean up response
-    text = text
-      .replace(/```json\n?/g, "")
-      .replace(/```\n?/g, "")
-      .trim();
-
-    const atsResult = JSON.parse(text);
-    return atsResult;
-  } catch (error) {
-    console.error("ATS calculation error:", error);
-    throw new Error("Failed to calculate ATS score");
-  }
-};
-
 // Calculate ATS score using RESUME FILE content
 export const calculateATSScoreFromResume = async (
   resumeText,

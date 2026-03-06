@@ -30,6 +30,10 @@ export const getStudentProfile = async (req, res) => {
     // Calculate profile completion
     const completionPercentage = calculateStudentProfileCompletion(student);
 
+    // ✅ DEBUG LOGS
+    console.log("📸 Photo in DB:", student.photo);
+    console.log("📄 Resume in DB:", student.resume);
+
     res.json({
       profile: {
         registrationNumber: student.registrationNumber,
@@ -47,6 +51,8 @@ export const getStudentProfile = async (req, res) => {
         package: student.package,
         profileCompleted: student.profileCompleted,
         completionPercentage: completionPercentage,
+        photo: student.photo, // ✅ ADD THIS
+        resume: student.resume, // ✅ ADD THIS
         createdAt: student.createdAt,
         updatedAt: student.updatedAt,
       },
@@ -273,6 +279,115 @@ export const getProfileCompletion = async (req, res) => {
     res.status(500).json({
       message: "Server error",
       error: error.message,
+    });
+  }
+};
+
+// @desc    Get dashboard data with career guidance mode
+// @route   GET /api/student/dashboard
+// @access  Private (Student)
+export const getStudentDashboard = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    const student = await Student.findOne({ userId })
+      .populate("userId", "email")
+      .lean();
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Calculate days until expiry
+    const today = new Date();
+    const expiryDate = new Date(student.expiryDate);
+    const diffTime = expiryDate - today;
+    const daysUntilExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // Check if in career guidance mode
+    const careerGuidanceStart = new Date(student.careerGuidanceStartDate);
+    const isInCareerGuidanceMode =
+      today >= careerGuidanceStart && today < expiryDate;
+
+    res.json({
+      success: true,
+      dashboardMode: isInCareerGuidanceMode ? "career_guidance" : "normal",
+      daysUntilExpiry: daysUntilExpiry > 0 ? daysUntilExpiry : 0,
+      accountStatus: student.accountStatus,
+      placementStatus: student.placementStatus || "seeking",
+      student: {
+        name: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
+        email: student.userId.email,
+        registrationNumber: student.registrationNumber,
+        placedCompany: student.placedCompany,
+        package: student.package,
+      },
+    });
+  } catch (error) {
+    console.error("Dashboard error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard",
+    });
+  }
+};
+
+// @desc    Request account extension
+// @route   POST /api/student/request-extension
+// @access  Private (Student)
+export const requestAccountExtension = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { reason } = req.body;
+
+    if (!reason || reason.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a reason",
+      });
+    }
+
+    const student = await Student.findOne({ userId });
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Check for pending request
+    const hasPending = student.extensionRequests.some(
+      (req) => req.status === "pending",
+    );
+
+    if (hasPending) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have a pending request",
+      });
+    }
+
+    // Add request
+    student.extensionRequests.push({
+      reason: reason.trim(),
+      status: "pending",
+    });
+
+    await student.save();
+
+    res.json({
+      success: true,
+      message: "Extension request submitted successfully",
+    });
+  } catch (error) {
+    console.error("Extension request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit request",
     });
   }
 };

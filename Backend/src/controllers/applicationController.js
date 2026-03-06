@@ -1,10 +1,7 @@
 import Application from "../models/Application.js";
 import Job from "../models/Job.js";
 import Student from "../models/Student.js";
-import {
-  calculateATSScore,
-  calculateATSScoreFromResume,
-} from "../services/geminiService.js";
+import { calculateATSScoreFromResume } from "../services/geminiService.js";
 import {
   createNotification,
   notificationTemplates,
@@ -523,9 +520,19 @@ export const updateApplicationStatus = async (req, res) => {
       });
     }
 
+    // ✅ FIX 1: Populate studentId properly to get userId
     const application = await Application.findById(req.params.id)
-      .populate("jobId")
-      .populate("studentId");
+      .populate({
+        path: "jobId",
+        populate: {
+          path: "recruiterId",
+          select: "companyInfo",
+        },
+      })
+      .populate({
+        path: "studentId",
+        select: "userId personalInfo academicInfo registrationNumber",
+      });
 
     if (!application) {
       return res.status(404).json({
@@ -535,7 +542,9 @@ export const updateApplicationStatus = async (req, res) => {
     }
 
     // Check if job belongs to recruiter
-    if (application.jobId.recruiterId.toString() !== recruiterId.toString()) {
+    if (
+      application.jobId.recruiterId._id.toString() !== recruiterId.toString()
+    ) {
       return res.status(403).json({
         success: false,
         message: "Not authorized to update this application",
@@ -566,27 +575,13 @@ export const updateApplicationStatus = async (req, res) => {
 
     await application.save();
 
-    await application.populate([
-      {
-        path: "studentId",
-        select: "personalInfo academicInfo registrationNumber",
-      },
-      {
-        path: "jobId",
-        select: "title",
-        populate: {
-          path: "recruiterId",
-          select: "companyInfo",
-        },
-      },
-    ]);
-
-    // CREATE NOTIFICATION FOR STUDENT
+    // ✅ FIX 2: Get required data for notification
     const companyName =
       application.jobId.recruiterId?.companyInfo?.companyName || "Company";
     const jobTitle = application.jobId.title;
-    const studentUserId = application.studentId.userId;
+    const studentUserId = application.studentId.userId; // ✅ This now works!
 
+    // ✅ FIX 3: Create notification with proper data
     let notificationData;
     let actionUrl = "/student/applications";
 
@@ -595,11 +590,13 @@ export const updateApplicationStatus = async (req, res) => {
         jobTitle,
         companyName,
       );
+      actionUrl = "/student/applications";
     } else if (status === "rejected") {
       notificationData = notificationTemplates.applicationRejected(
         jobTitle,
         companyName,
       );
+      actionUrl = "/student/applications";
     } else if (status === "selected") {
       notificationData = notificationTemplates.applicationSelected(
         jobTitle,
@@ -608,15 +605,25 @@ export const updateApplicationStatus = async (req, res) => {
       actionUrl = `/student/jobs/${application.jobId._id}`;
     }
 
-    if (notificationData) {
-      await createNotification({
-        userId: studentUserId,
-        userRole: "student",
-        ...notificationData,
-        relatedJob: application.jobId._id,
-        relatedApplication: application._id,
-        actionUrl,
-      });
+    // ✅ FIX 4: Create notification only if we have data
+    if (notificationData && studentUserId) {
+      try {
+        await createNotification({
+          userId: studentUserId,
+          userRole: "student",
+          type: notificationData.type,
+          title: notificationData.title,
+          message: notificationData.message,
+          priority: notificationData.priority || "high",
+          relatedJob: application.jobId._id,
+          relatedApplication: application._id,
+          actionUrl,
+        });
+      } catch (notifError) {
+        // ✅ Don't fail the whole request if notification fails
+        console.error("Create notification error:", notifError);
+        // Continue - status update succeeded even if notification failed
+      }
     }
 
     res.json({
@@ -629,6 +636,7 @@ export const updateApplicationStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update application status",
+      error: error.message, // ✅ Added for debugging
     });
   }
 };

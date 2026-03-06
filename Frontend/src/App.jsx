@@ -3,6 +3,8 @@ import { Toaster } from "react-hot-toast";
 import { useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/common/ProtectedRoute";
 
+import LandingPage from "./pages/LandingPage";
+
 // Auth Pages
 import Login from "./pages/auth/Login";
 import RegisterStudent from "./pages/auth/RegisterStudent";
@@ -28,6 +30,7 @@ import ManageStudents from "./pages/admin/ManageStudents";
 import ManageRecruiters from "./pages/admin/ManageRecruiters";
 import ManageAlumni from "./pages/admin/ManageAlumni";
 import ManageApplications from "./pages/admin/ManageApplications";
+import AnalyticsPage from "./pages/admin/AnalyticsPage";
 
 // Alumni Pages
 import AlumniDashboard from "./pages/alumni/AlumniDashboard";
@@ -48,6 +51,8 @@ import JobApplications from "./pages/recruiter/JobApplications";
 
 // Import NotificationsPage
 import NotificationsPage from "./components/common/NotificationsPage";
+
+import FeedPage from "./pages/shared/FeedPage";
 
 const App = () => {
   const { user } = useAuth();
@@ -72,6 +77,7 @@ const App = () => {
       />
 
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         {/* Public Routes */}
         <Route
           path="/login"
@@ -145,6 +151,14 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/student/feed"
+          element={
+            <ProtectedRoute allowedRoles={["student"]}>
+              <FeedPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Recruiter Routes */}
         <Route
@@ -176,6 +190,14 @@ const App = () => {
           element={
             <ProtectedRoute allowedRoles={["recruiter"]}>
               <RecruiterJobView />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/recruiter/feed"
+          element={
+            <ProtectedRoute allowedRoles={["recruiter"]}>
+              <FeedPage />
             </ProtectedRoute>
           }
         />
@@ -245,6 +267,22 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/analytics"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AnalyticsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/feed"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <FeedPage />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Alumni Routes */}
         <Route
@@ -260,6 +298,14 @@ const App = () => {
           element={
             <ProtectedRoute allowedRoles={["alumni"]}>
               <AlumniProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alumni/feed"
+          element={
+            <ProtectedRoute allowedRoles={["alumni"]}>
+              <FeedPage />
             </ProtectedRoute>
           }
         />

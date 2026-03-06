@@ -9,6 +9,7 @@ const Sidebar = () => {
     const menus = {
       student: [
         { path: "/student/dashboard", label: "Dashboard", icon: "📊" },
+        { path: "/student/feed", label: "Feed", icon: "📰" },
         { path: "/student/profile", label: "My Profile", icon: "👤" },
         { path: "/student/jobs", label: "Browse Jobs", icon: "💼" },
         { path: "/student/applications", label: "My Applications", icon: "📝" },
@@ -16,6 +17,7 @@ const Sidebar = () => {
       ],
       recruiter: [
         { path: "/recruiter/dashboard", label: "Dashboard", icon: "📊" },
+        { path: "/recruiter/feed", label: "Feed", icon: "📰" },
         { path: "/recruiter/profile", label: "Company Profile", icon: "🏢" },
         { path: "/recruiter/jobs", label: "My Jobs", icon: "💼" },
         { path: "/recruiter/post-job", label: "Post Job", icon: "➕" },
@@ -23,6 +25,7 @@ const Sidebar = () => {
       ],
       admin: [
         { path: "/admin/dashboard", label: "Dashboard", icon: "📊" },
+        { path: "/admin/feed", label: "Feed", icon: "📰" },
         { path: "/admin/profile", label: "My Profile", icon: "👤" },
         {
           path: "/admin/recruiters/pending",
@@ -36,10 +39,12 @@ const Sidebar = () => {
         { path: "/admin/jobs", label: "All Jobs", icon: "💼" },
         { path: "/admin/jobs/pending", label: "Pending Jobs", icon: "⏳" },
         { path: "/admin/applications", label: "All Applications", icon: "📝" },
+        { path: "/admin/analytics", label: "Analytics", icon: "📈" },
         { path: "/notifications", label: "Notifications", icon: "🔔" },
       ],
       alumni: [
         { path: "/alumni/dashboard", label: "Dashboard", icon: "📊" },
+        { path: "/alumni/feed", label: "Feed", icon: "📰" },
         { path: "/alumni/profile", label: "My Profile", icon: "👤" },
         { path: "/alumni/referrals", label: "My Referrals", icon: "🔗" },
         { path: "/alumni/post-referral", label: "Post Referral", icon: "➕" },

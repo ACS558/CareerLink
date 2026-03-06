@@ -8,6 +8,8 @@ import jobRoutes from "./jobRoutes.js";
 import applicationRoutes from "./applicationRoutes.js";
 import uploadRoutes from "./uploadRoutes.js";
 import notificationRoutes from "./notificationRoutes.js";
+import analyticsRoutes from "./analyticsRoutes.js";
+import feedRoutes from './feedRoutes.js';
 
 const router = express.Router();
 
@@ -19,6 +21,8 @@ router.use("/jobs", jobRoutes);
 router.use("/applications", applicationRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/notifications", notificationRoutes);
+router.use("/analytics", analyticsRoutes);
+router.use('/feed', feedRoutes);
 
 // Mount auth routes
 router.use("/auth", authRoutes);
