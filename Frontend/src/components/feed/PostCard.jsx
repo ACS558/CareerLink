@@ -88,7 +88,9 @@ const PostCard = ({ post, currentUser, onDelete, onPin, onUnpin }) => {
   };
 
   const handleDocumentDownload = (doc) => {
-    window.open(doc.url, "_blank");
+    const downloadUrl = doc.url.replace("/upload/", "/upload/fl_attachment/");
+
+    window.open(downloadUrl, "_blank");
   };
 
   const formatFileSize = (bytes) => {
@@ -371,12 +373,23 @@ const PostCard = ({ post, currentUser, onDelete, onPin, onUnpin }) => {
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDocumentDownload(doc)}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-                >
-                  Download
-                </button>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`https://docs.google.com/gview?url=${doc.url}&embedded=true`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1 bg-gray-600 text-white text-sm rounded-lg hover:bg-gray-700"
+                  >
+                    View
+                  </a>
+
+                  <button
+                    onClick={() => handleDocumentDownload(doc)}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                  >
+                    Download
+                  </button>
+                </div>
               </div>
             ))}
           </div>

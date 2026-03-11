@@ -317,13 +317,16 @@ export const getStudentDashboard = async (req, res) => {
       dashboardMode: isInCareerGuidanceMode ? "career_guidance" : "normal",
       daysUntilExpiry: daysUntilExpiry > 0 ? daysUntilExpiry : 0,
       accountStatus: student.accountStatus,
-      placementStatus: student.placementStatus || "seeking",
+      placementStatus: student.placementStatus || "unplaced",
       student: {
         name: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
         email: student.userId.email,
         registrationNumber: student.registrationNumber,
         placedCompany: student.placedCompany,
         package: student.package,
+
+        placements: student.placements || [],
+        totalPlacements: student.placements?.length || 0,
       },
     });
   } catch (error) {
@@ -378,6 +381,43 @@ export const requestAccountExtension = async (req, res) => {
     });
 
     await student.save();
+
+    // ✅ FIX: CREATE NOTIFICATIONS FOR ALL ADMINS
+    try {
+      // Import at the top if not already imported
+      const { createNotification, notificationTemplates } =
+        await import("../services/notificationService.js");
+
+      // Find all admin users
+      const admins = await User.find({ role: "admin", isActive: true }).select(
+        "_id",
+      );
+
+      console.log(`📧 Creating notifications for ${admins.length} admins`);
+
+      // Create notification for each admin
+      for (const admin of admins) {
+        await createNotification({
+          userId: admin._id,
+          userRole: "admin",
+          type: "extension_request",
+          title: "📝 New Extension Request",
+          message: `${student.personalInfo?.firstName || "A student"} ${student.personalInfo?.lastName || ""} (${student.registrationNumber}) has requested an account extension.`,
+          actionUrl: "/admin/extension-requests",
+          metadata: {
+            studentId: student._id,
+            studentName: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
+            registrationNumber: student.registrationNumber,
+            reason: reason.trim(),
+          },
+        });
+      }
+
+      console.log(`✅ Created ${admins.length} notifications for admins`);
+    } catch (notifError) {
+      console.error("❌ Notification creation error:", notifError);
+      // Don't fail the request if notification fails
+    }
 
     res.json({
       success: true,

@@ -10,6 +10,8 @@ import {
   updateApplicationStatus,
   bulkUpdateApplications,
   recalculateATSScores,
+  exportJobApplications,
+  autoShortlistByATS,
 } from "../controllers/applicationController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
@@ -49,7 +51,7 @@ router.put(
   roleMiddleware("recruiter"),
   updateApplicationStatus,
 );
-router.put(
+router.patch(
   "/bulk-update",
   authMiddleware,
   roleMiddleware("recruiter"),
@@ -61,6 +63,20 @@ router.post(
   authMiddleware,
   roleMiddleware("recruiter"),
   recalculateATSScores,
+);
+
+router.get(
+  "/job/:jobId/export",
+  authMiddleware,
+  roleMiddleware(["recruiter"]),
+  exportJobApplications,
+);
+
+router.post(
+  "/job/:jobId/auto-shortlist",
+  authMiddleware,
+  roleMiddleware(["recruiter"]),
+  autoShortlistByATS,
 );
 
 export default router;

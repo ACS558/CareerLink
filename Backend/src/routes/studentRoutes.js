@@ -6,6 +6,7 @@ import {
   getStudentDashboard,
   requestAccountExtension,
 } from "../controllers/studentController.js";
+import { getMyPlacements } from "../controllers/placementController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
 
@@ -21,5 +22,8 @@ router.put("/profile", updateStudentProfile);
 router.get("/profile/completion", getProfileCompletion);
 router.get("/dashboard", authMiddleware, getStudentDashboard);
 router.post("/request-extension", authMiddleware, requestAccountExtension);
+
+// Placement management
+router.get("/placements", authMiddleware, getMyPlacements);
 
 export default router;

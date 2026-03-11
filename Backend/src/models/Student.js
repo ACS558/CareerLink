@@ -24,6 +24,12 @@ const studentSchema = new mongoose.Schema(
         type: String,
         default: "",
       },
+      email: {
+        type: String,
+        default: "",
+        lowercase: true,
+        trim: true,
+      },
       phoneNumber: {
         type: String,
         default: "",
@@ -159,19 +165,19 @@ const studentSchema = new mongoose.Schema(
     },
     registrationDate: {
       type: Date,
-      required: true,
+      required: false,
       default: Date.now,
       immutable: true,
     },
 
     expiryDate: {
       type: Date,
-      required: true,
+      required: false,
     },
 
     careerGuidanceStartDate: {
       type: Date,
-      required: true,
+      required: false,
     },
 
     accountStatus: {
@@ -208,16 +214,82 @@ const studentSchema = new mongoose.Schema(
     deletedAt: Date,
 
     deletionScheduledAt: Date,
+    placements: [
+      {
+        company: {
+          type: String,
+          required: true,
+        },
+        jobTitle: {
+          type: String,
+          default: "",
+        },
+        package: {
+          type: Number,
+          required: true,
+        },
+        offerDate: {
+          type: Date,
+          default: Date.now,
+        },
+        joiningDate: {
+          type: Date,
+        },
+        status: {
+          type: String,
+          enum: ["pending", "accepted", "declined"],
+          default: "pending",
+        },
+        offerLetter: {
+          url: String,
+          publicId: String,
+        },
+        isPrimary: {
+          type: Boolean,
+          default: false,
+        },
+        metadata: {
+          jobId: mongoose.Schema.Types.ObjectId,
+          applicationId: mongoose.Schema.Types.ObjectId,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
   },
 );
 
-studentSchema.pre("save", function (next) {
-  // Only run on NEW documents (when first creating)
-  if (this.isNew && !this.expiryDate) {
+studentSchema.virtual("primaryPlacement").get(function () {
+  if (this.placements && this.placements.length > 0) {
+    // Return the primary placement or the first accepted one
+    const primary = this.placements.find(
+      (p) => p.isPrimary && p.status === "accepted",
+    );
+    if (primary) return primary;
+
+    const firstAccepted = this.placements.find((p) => p.status === "accepted");
+    if (firstAccepted) return firstAccepted;
+
+    return this.placements[0];
+  }
+  return null;
+});
+
+// ============================================
+// MIDDLEWARE - CALCULATE EXPIRY DATES
+// ============================================
+studentSchema.pre("save", async function () {
+  // ✅ No 'next' parameter - just async function
+
+  // Only run on NEW documents
+  if (this.isNew) {
     const regDate = this.registrationDate || new Date();
+
+    // Set registrationDate
+    if (!this.registrationDate) {
+      this.registrationDate = regDate;
+    }
 
     // Career guidance starts at day 365
     const guidanceStart = new Date(regDate);
@@ -233,10 +305,39 @@ studentSchema.pre("save", function (next) {
     const deletion = new Date(expiry);
     deletion.setDate(deletion.getDate() + 90);
     this.deletionScheduledAt = deletion;
-  }
 
-  // ✅ CRITICAL: Always call next()
-  next();
+    // Set defaults
+    if (!this.accountStatus) {
+      this.accountStatus = "active";
+    }
+    if (this.isDeleted === undefined) {
+      this.isDeleted = false;
+    }
+  }
+  // ✅ NEW: Auto-sync placement status based on placements array
+  if (this.placements && this.placements.length > 0) {
+    // Find primary or first accepted placement
+    const primary = this.placements.find(
+      (p) => p.isPrimary && p.status === "accepted",
+    );
+    const firstAccepted = this.placements.find((p) => p.status === "accepted");
+    const activePlacement = primary || firstAccepted || this.placements[0];
+
+    if (activePlacement) {
+      // Update old fields for backward compatibility
+      this.placementStatus = "placed";
+      this.placedCompany = activePlacement.company;
+      this.package = activePlacement.package;
+      this.placedAt = activePlacement.offerDate;
+    }
+  } else {
+    // No placements - set to unplaced
+    this.placementStatus = "unplaced";
+    this.placedCompany = "";
+    this.package = null;
+    this.placedAt = null;
+  }
+  // ✅ No next() call needed
 });
 
 // ============================================
@@ -256,6 +357,8 @@ studentSchema.methods.isInCareerGuidanceMode = function () {
   return today >= guidanceStart && today < expiry;
 };
 
+// ============================================
+// CREATE MODEL
+// ============================================
 const Student = mongoose.model("Student", studentSchema);
-
 export default Student;

@@ -15,6 +15,7 @@ import RegisterAlumni from "./pages/auth/RegisterAlumni";
 // Student Pages
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentProfile from "./pages/student/StudentProfile";
+import MyPlacements from "./pages/student/MyPlacements";
 
 // Recruiter Pages
 import RecruiterDashboard from "./pages/recruiter/RecruiterDashboard";
@@ -31,6 +32,7 @@ import ManageRecruiters from "./pages/admin/ManageRecruiters";
 import ManageAlumni from "./pages/admin/ManageAlumni";
 import ManageApplications from "./pages/admin/ManageApplications";
 import AnalyticsPage from "./pages/admin/AnalyticsPage";
+import AdminJobDetails from "./pages/admin/AdminJobDetails";
 
 // Alumni Pages
 import AlumniDashboard from "./pages/alumni/AlumniDashboard";
@@ -47,12 +49,13 @@ import RecruiterJobs from "./pages/recruiter/RecruiterJobs";
 import ManageJobs from "./pages/admin/ManageJobs";
 import PendingJobs from "./pages/admin/PendingJobs";
 import MyApplications from "./pages/student/MyApplications";
-import JobApplications from "./pages/recruiter/JobApplications";
+import RecruiterJobApplications from "./pages/recruiter/Recruiterjobapplications";
 
 // Import NotificationsPage
 import NotificationsPage from "./components/common/NotificationsPage";
 
 import FeedPage from "./pages/shared/FeedPage";
+import ExtensionRequests from "./pages/admin/ExtensionRequests";
 
 const App = () => {
   const { user } = useAuth();
@@ -160,6 +163,7 @@ const App = () => {
           }
         />
 
+        <Route path="/student/placements" element={<MyPlacements />} />
         {/* Recruiter Routes */}
         <Route
           path="/recruiter/dashboard"
@@ -181,7 +185,7 @@ const App = () => {
           path="/recruiter/jobs/:jobId/applications"
           element={
             <ProtectedRoute allowedRoles={["recruiter"]}>
-              <JobApplications />
+              <RecruiterJobApplications />
             </ProtectedRoute>
           }
         />
@@ -280,6 +284,22 @@ const App = () => {
           element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <FeedPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/extension-requests"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <ExtensionRequests />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/jobs/:jobId"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminJobDetails />
             </ProtectedRoute>
           }
         />

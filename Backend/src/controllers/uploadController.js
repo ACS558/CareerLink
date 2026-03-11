@@ -102,14 +102,14 @@ export const uploadResume = async (req, res) => {
     console.log("☁️ Uploading to Cloudinary...");
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "careerlink/resumes",
-      resource_type: "raw",
+      resource_type: "image",
     });
 
     // Delete old resume if exists
     const student = await Student.findById(studentId);
     if (student.resume?.publicId) {
       await cloudinary.uploader.destroy(student.resume.publicId, {
-        resource_type: "raw",
+        resource_type: "image",
       });
     }
 
@@ -120,37 +120,6 @@ export const uploadResume = async (req, res) => {
       uploadedAt: new Date(),
       parsedData: parsedData || null,
     };
-
-    // Auto-populate fields from parsed data if available
-    if (parsedData) {
-      console.log("📝 Auto-filling profile from resume...");
-
-      if (parsedData.skills?.length > 0) {
-        const newSkills = [
-          ...new Set([...student.skills, ...parsedData.skills]),
-        ];
-        student.skills = newSkills;
-      }
-
-      if (parsedData.projects?.length > 0) {
-        parsedData.projects.forEach((proj) => {
-          student.projects.push({
-            title: proj.title,
-            description: proj.description,
-            technologies: proj.technologies || [],
-          });
-        });
-      }
-
-      if (parsedData.certifications?.length > 0) {
-        parsedData.certifications.forEach((cert) => {
-          student.certifications.push({
-            name: cert.name,
-            issuedBy: cert.issuer,
-          });
-        });
-      }
-    }
 
     await student.save();
 

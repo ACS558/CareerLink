@@ -591,15 +591,8 @@ const StudentProfile = () => {
                                 )}
                               </div>
                             </div>
+
                             <div className="flex space-x-2">
-                              <a
-                                href={profile.resume.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="btn-primary px-4 py-1 text-sm"
-                              >
-                                View
-                              </a>
                               <button
                                 onClick={handleDeleteResume}
                                 className="btn-danger px-4 py-1 text-sm"
@@ -609,6 +602,7 @@ const StudentProfile = () => {
                             </div>
                           </div>
                         </div>
+
                         {/* Upload New Resume Button */}
                         <div className="text-center">
                           <label className="btn-secondary px-6 py-2 cursor-pointer inline-block">
@@ -623,6 +617,23 @@ const StudentProfile = () => {
                               className="hidden"
                             />
                           </label>
+                        </div>
+                        {/* Resume Preview */}
+                        <div className="mt-6">
+                          <h5 className="font-semibold text-gray-800 mb-4">
+                            Resume Preview
+                          </h5>
+
+                          <div className="border border-gray-200 rounded-xl bg-gray-100 flex justify-center py-8">
+                            <iframe
+                              src={profile.resume.url.replace(
+                                "/upload/",
+                                "/upload/f_auto,w_900/",
+                              )}
+                              title="Resume Preview"
+                              className="w-[900px] aspect-[1/1.414] bg-white shadow-lg rounded"
+                            />
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -743,13 +754,26 @@ const StudentProfile = () => {
                         <option value="Other">Other</option>
                       </select>
                     </div>
+
+                    {/* Email Field - READ ONLY */}
+                    <div>
+                      <label className="label">Email Address</label>
+                      <input
+                        type="email"
+                        value={profile.personalInfo?.email || ""}
+                        disabled
+                        className="input-field"
+                      />
+                    </div>
+
+                    {/* Registration Number - READ ONLY */}
                     <div>
                       <label className="label">Registration Number</label>
                       <input
                         type="text"
-                        className="input-field bg-gray-100"
-                        value={profile?.registrationNumber || ""}
+                        value={profile.registrationNumber || ""}
                         disabled
+                        className="input-field"
                       />
                     </div>
                   </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { notificationAPI } from "../../services/api";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
-import { useNotifications } from "../../hooks/useNotifications"; // ADD THIS IMPORT
+import { useNotifications } from "../../hooks/useNotifications";
 
 const NotificationBell = () => {
   const navigate = useNavigate();
@@ -36,11 +36,27 @@ const NotificationBell = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // ✅ UPDATED: Better notification click handler with navigation
   const handleNotificationClick = async (notification) => {
-    await markAsRead(notification._id);
-    if (notification.actionUrl) {
-      navigate(notification.actionUrl);
+    try {
+      // Mark as read
+      await markAsRead(notification._id);
+
+      // Close dropdown
       setShowDropdown(false);
+
+      // Navigate to actionUrl or default to notifications page
+      if (notification.actionUrl) {
+        navigate(notification.actionUrl);
+      } else {
+        navigate("/notifications");
+      }
+    } catch (error) {
+      console.error("Notification click error:", error);
+      // Still navigate even if mark as read fails
+      if (notification.actionUrl) {
+        navigate(notification.actionUrl);
+      }
     }
   };
 
@@ -56,16 +72,30 @@ const NotificationBell = () => {
 
   const getNotificationIcon = (type) => {
     const icons = {
+      // Job notifications
       job_approved: "✅",
       job_rejected: "❌",
+
+      // Application notifications
       application_received: "📝",
       application_shortlisted: "🎉",
       application_rejected: "📋",
       application_selected: "🎊",
+      application_status: "📬", // ✅ NEW
+
+      // Account notifications
       recruiter_approved: "✅",
       recruiter_rejected: "❌",
       alumni_approved: "✅",
       alumni_rejected: "❌",
+
+      // Extension notifications
+      extension_request: "📝",
+      extension_approved: "✅",
+      extension_rejected: "❌",
+
+      // Placement notifications
+      placement_offer: "🎉", // ✅ NEW
     };
     return icons[type] || "🔔";
   };

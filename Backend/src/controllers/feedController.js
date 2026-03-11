@@ -160,6 +160,8 @@ export const createPost = async (req, res) => {
         const result = await cloudinary.uploader.upload(file.path, {
           folder: "careerlink/feed/documents",
           resource_type: "raw",
+          use_filename: true,
+          unique_filename: true,
         });
 
         documents.push({

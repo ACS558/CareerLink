@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom"; // ✅ ADD THIS IMPORT
 import { adminAPI } from "../../services/api";
 import { getStatusBadgeColor, formatDate } from "../../utils/helpers";
 import Navbar from "../../components/common/Navbar";
 import Sidebar from "../../components/common/Sidebar";
 
 const ManageJobs = () => {
+  const navigate = useNavigate(); // ✅ ADD THIS
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -26,6 +28,14 @@ const ManageJobs = () => {
       console.error("Fetch jobs error:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ✅ ADD THIS FUNCTION
+  const handleJobClick = (job) => {
+    // Only allow clicking on approved jobs
+    if (job.approvalStatus === "approved") {
+      navigate(`/admin/jobs/${job._id}`);
     }
   };
 
@@ -122,17 +132,48 @@ const ManageJobs = () => {
                     </tr>
                   ) : (
                     jobs.map((job, index) => (
-                      <tr key={job._id} className="hover:bg-gray-50">
+                      <tr
+                        key={job._id}
+                        onClick={() => handleJobClick(job)} // ✅ ADD THIS
+                        className={`hover:bg-gray-50 transition ${
+                          // ✅ UPDATE THIS
+                          job.approvalStatus === "approved"
+                            ? "cursor-pointer hover:bg-blue-50"
+                            : "cursor-not-allowed opacity-60"
+                        }`}
+                      >
                         <td className="px-6 py-4 text-sm text-gray-500">
                           {index + 1}
                         </td>
                         <td className="px-6 py-4">
-                          <p className="text-sm font-semibold text-gray-900">
-                            {job.title}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {job.jobType} • {job.workMode}
-                          </p>
+                          <div className="flex items-center space-x-2">
+                            {" "}
+                            {/* ✅ ADD THIS */}
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {job.title}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {job.jobType} • {job.workMode}
+                              </p>
+                            </div>
+                            {/* ✅ ADD CLICK INDICATOR FOR APPROVED JOBS */}
+                            {job.approvalStatus === "approved" && (
+                              <svg
+                                className="w-4 h-4 text-blue-600"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5l7 7-7 7"
+                                />
+                              </svg>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <p className="text-sm font-medium text-gray-700">
@@ -166,6 +207,15 @@ const ManageJobs = () => {
               </table>
             </div>
           </div>
+
+          {/* ✅ ADD HELPER TEXT */}
+          {jobs.some((job) => job.approvalStatus === "approved") && (
+            <div className="mt-4 text-sm text-gray-600">
+              💡 Click on any{" "}
+              <span className="font-semibold text-blue-600">approved</span> job
+              to view applications and export data
+            </div>
+          )}
         </main>
       </div>
     </div>

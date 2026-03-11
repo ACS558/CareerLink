@@ -65,6 +65,7 @@ export const registerStudent = async (req, res) => {
       personalInfo: {
         firstName,
         lastName,
+        email: email.toLowerCase(),
       },
     });
 

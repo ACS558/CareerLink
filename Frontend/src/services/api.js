@@ -88,6 +88,9 @@ export const studentAPI = {
   getDashboard: () => api.get("/student/dashboard"),
   requestExtension: (reason) =>
     api.post("/student/request-extension", { reason }),
+
+  // Placements
+  getPlacements: () => api.get("/student/placements"),
 };
 
 // ============ RECRUITER APIs ============
@@ -98,6 +101,14 @@ export const recruiterAPI = {
 
   // Update profile
   updateProfile: (data) => api.put("/recruiter/profile", data),
+
+  exportJobApplications: (jobId, status = "all") =>
+    api.get(`/applications/job/${jobId}/export`, {
+      params: { status },
+      responseType: "blob",
+    }),
+  autoShortlistByATS: (jobId, threshold) =>
+    api.post(`/applications/job/${jobId}/auto-shortlist`, { threshold }),
 };
 
 // ============ ADMIN APIs ============
@@ -133,6 +144,27 @@ export const adminAPI = {
 
   // Applications
   getAllApplications: (params) => api.get("/admin/applications", { params }),
+  getExtensionRequests: (status) =>
+    api.get("/admin/extension-requests", { params: { status } }),
+
+  getExtensionStats: () => api.get("/admin/extension-requests/stats"),
+
+  reviewExtensionRequest: (studentId, requestId, action, extensionDays) =>
+    api.post(`/admin/extension-requests/${studentId}/${requestId}/review`, {
+      action,
+      extensionDays,
+    }),
+
+  getJobDetails: (jobId) => api.get(`/admin/jobs/${jobId}`),
+  updateApplicationStatus: (applicationId, data) =>
+    api.put(`/admin/applications/${applicationId}/status`, data),
+  exportJobApplications: (jobId, status = "all") =>
+    api.get(`/admin/jobs/${jobId}/export`, {
+      params: { status },
+      responseType: "blob",
+    }),
+  bulkUpdateApplications: (data) =>
+    api.patch("/admin/applications/bulk-update", data),
 };
 
 // ============ ALUMNI APIs ============
@@ -174,7 +206,8 @@ export const applicationAPI = {
     api.get(`/applications/job/${jobId}`, { params }),
   updateApplicationStatus: (id, data) =>
     api.put(`/applications/${id}/status`, data),
-  bulkUpdateApplications: (data) => api.put("/applications/bulk-update", data),
+  bulkUpdateApplications: (data) =>
+    api.patch("/applications/bulk-update", data),
   recalculateATSScores: (jobId, data) =>
     api.post(`/applications/job/${jobId}/calculate-scores`, data),
 };

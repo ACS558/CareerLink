@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import connectDB from "./src/config/database.js";
 import routes from "./src/routes/index.js";
-import { initializeCronJobs } from "./config/cronJobs.js";
+import { initializeCronJobs } from "./src/config/cronJobs.js";
 
 // Load environment variables
 dotenv.config();
@@ -65,7 +65,6 @@ app.use((req, res) => {
     message: "Route not found",
   });
 });
-
 // Start server
 const PORT = process.env.PORT || 5000;
 

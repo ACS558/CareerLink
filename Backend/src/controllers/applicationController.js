@@ -242,23 +242,6 @@ ${
       { path: "studentId", select: "personalInfo academicInfo" },
     ]);
 
-    // NOTIFY RECRUITER OF NEW APPLICATION
-    const studentName = `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`;
-    const recruiterUserId = await job.recruiterId.populate("userId");
-    const notificationData = notificationTemplates.newApplication(
-      studentName,
-      job.title,
-    );
-
-    await createNotification({
-      userId: recruiterUserId.userId._id,
-      userRole: "recruiter",
-      ...notificationData,
-      relatedJob: job._id,
-      relatedApplication: application._id,
-      actionUrl: `/recruiter/jobs/${job._id}/applications`,
-    });
-
     res.status(201).json({
       success: true,
       message: "Application submitted successfully!",
@@ -422,7 +405,7 @@ export const getRecruiterApplications = async (req, res) => {
     const applications = await Application.find(filter)
       .populate({
         path: "studentId",
-        select: "personalInfo academicInfo skills registrationNumber",
+        select: "personalInfo academicInfo skills registrationNumber resume",
       })
       .populate({
         path: "jobId",
@@ -476,7 +459,7 @@ export const getJobApplications = async (req, res) => {
       .populate({
         path: "studentId",
         select:
-          "personalInfo academicInfo skills projects internships certifications registrationNumber",
+          "personalInfo academicInfo skills projects internships certifications registrationNumber resume",
       })
       .sort({ createdAt: -1 });
 
@@ -510,7 +493,7 @@ export const getJobApplications = async (req, res) => {
 export const updateApplicationStatus = async (req, res) => {
   try {
     const recruiterId = req.user.roleDoc._id;
-    const { status, recruiterNotes, rejectionReason } = req.body;
+    const { status } = req.body;
 
     // Validate status
     if (!["shortlisted", "rejected", "selected", "on-hold"].includes(status)) {
@@ -520,7 +503,6 @@ export const updateApplicationStatus = async (req, res) => {
       });
     }
 
-    // ✅ FIX 1: Populate studentId properly to get userId
     const application = await Application.findById(req.params.id)
       .populate({
         path: "jobId",
@@ -531,7 +513,8 @@ export const updateApplicationStatus = async (req, res) => {
       })
       .populate({
         path: "studentId",
-        select: "userId personalInfo academicInfo registrationNumber",
+        select:
+          "userId personalInfo academicInfo registrationNumber placements placementStatus",
       });
 
     if (!application) {
@@ -551,37 +534,123 @@ export const updateApplicationStatus = async (req, res) => {
       });
     }
 
-    // Validate rejection reason
-    if (status === "rejected" && !rejectionReason) {
-      return res.status(400).json({
-        success: false,
-        message: "Rejection reason is required",
-      });
-    }
+    // Store old status
+    const oldStatus = application.status;
 
-    // Update status
+    // Update application status
     application.status = status;
-    if (recruiterNotes) application.recruiterNotes = recruiterNotes;
 
     if (status === "shortlisted") {
       application.shortlistedAt = new Date();
       application.shortlistedBy = req.user.userId;
     } else if (status === "rejected") {
       application.rejectedAt = new Date();
-      application.rejectionReason = rejectionReason;
     } else if (status === "selected") {
       application.selectedAt = new Date();
     }
 
     await application.save();
 
-    // ✅ FIX 2: Get required data for notification
+    // ✅ AUTO-CREATE PLACEMENT - ONLY CHECK BY APPLICATION ID
+    if (status === "selected" && oldStatus !== "selected") {
+      try {
+        const student = await Student.findById(application.studentId._id);
+
+        if (!student) {
+          console.error("❌ Student not found:", application.studentId._id);
+          throw new Error("Student not found");
+        }
+
+        const job = application.jobId;
+        const companyName =
+          job.company || job.recruiterId?.companyInfo?.companyName || "Company";
+        const jobTitle = job.title || job.role || "";
+        const packageAmount =
+          job.package || job.salary || job.salaryRange?.max || 0;
+
+        // ✅ ONLY CHECK BY APPLICATION ID (allow multiple placements from same company)
+        const existingPlacement = student.placements?.find(
+          (p) =>
+            p.metadata?.applicationId?.toString() ===
+            application._id.toString(),
+        );
+
+        if (existingPlacement) {
+          console.log(
+            `ℹ️ Placement already exists for application ${application._id}`,
+          );
+        } else {
+          // ✅ CREATE NEW PLACEMENT
+          console.log(
+            `🎯 Creating placement for student ${student.registrationNumber}`,
+          );
+          console.log(
+            `Company: ${companyName}, Role: ${jobTitle}, Package: ${packageAmount}`,
+          );
+
+          const updateResult = await Student.updateOne(
+            { _id: student._id },
+            {
+              $push: {
+                placements: {
+                  company: companyName,
+                  jobTitle: jobTitle,
+                  package: packageAmount,
+                  offerDate: new Date(),
+                  isPrimary: student.placements.length === 0,
+                  metadata: {
+                    jobId: job._id,
+                    applicationId: application._id,
+                  },
+                },
+              },
+              $set: {
+                placementStatus: "placed",
+                placedCompany: companyName,
+                package: packageAmount,
+                placedAt: new Date(),
+              },
+            },
+          );
+
+          console.log("✅ Update result:", updateResult);
+          console.log(
+            `✅ Student ${student.registrationNumber} marked as PLACED`,
+          );
+
+          // Send notification
+          try {
+            await createNotification({
+              userId: application.studentId.userId,
+              userRole: "student",
+              type: "application_selected",
+              title: "🎉 New Job Offer!",
+              message: `Congratulations! You've been selected for ${jobTitle} at ${companyName}. Check "My Placements" to manage your offer.`,
+              actionUrl: "/student/placements",
+              priority: "high",
+              relatedJob: job._id,
+              relatedApplication: application._id,
+            });
+          } catch (notifError) {
+            console.error("Placement notification error:", notifError);
+          }
+        }
+      } catch (placementError) {
+        console.error(
+          "❌ CRITICAL: Auto-create placement error:",
+          placementError,
+        );
+        console.error("Stack:", placementError.stack);
+        // Don't fail the status update
+      }
+    }
+
+    // Notifications for status change
     const companyName =
       application.jobId.recruiterId?.companyInfo?.companyName || "Company";
     const jobTitle = application.jobId.title;
-    const studentUserId = application.studentId.userId; // ✅ This now works!
+    const studentUserId = application.studentId.userId;
 
-    // ✅ FIX 3: Create notification with proper data
     let notificationData;
     let actionUrl = "/student/applications";
 
@@ -605,7 +674,6 @@ export const updateApplicationStatus = async (req, res) => {
       actionUrl = `/student/jobs/${application.jobId._id}`;
     }
 
-    // ✅ FIX 4: Create notification only if we have data
     if (notificationData && studentUserId) {
       try {
         await createNotification({
@@ -620,9 +688,7 @@ export const updateApplicationStatus = async (req, res) => {
           actionUrl,
         });
       } catch (notifError) {
-        // ✅ Don't fail the whole request if notification fails
         console.error("Create notification error:", notifError);
-        // Continue - status update succeeded even if notification failed
       }
     }
 
@@ -636,7 +702,7 @@ export const updateApplicationStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update application status",
-      error: error.message, // ✅ Added for debugging
+      error: error.message,
     });
   }
 };
@@ -647,9 +713,13 @@ export const updateApplicationStatus = async (req, res) => {
 export const bulkUpdateApplications = async (req, res) => {
   try {
     const recruiterId = req.user.roleDoc._id;
-    const { applicationIds, status, recruiterNotes, rejectionReason } =
-      req.body;
+    const { applicationIds, status } = req.body;
 
+    console.log("\n🔍 BULK UPDATE REQUEST:");
+    console.log("Recruiter ID:", recruiterId);
+    console.log("Application IDs:", applicationIds);
+    console.log("Target Status:", status);
+    console.log("");
     if (!applicationIds || applicationIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -657,42 +727,260 @@ export const bulkUpdateApplications = async (req, res) => {
       });
     }
 
-    if (!["shortlisted", "rejected", "on-hold"].includes(status)) {
+    if (!["shortlisted", "rejected", "on-hold", "selected"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status for bulk update",
       });
     }
 
-    // Verify all applications belong to recruiter
+    // ✅ FIXED CODE:
     const applications = await Application.find({
       _id: { $in: applicationIds },
-    }).populate("jobId");
+    })
+      .populate({
+        path: "jobId",
+        populate: {
+          path: "recruiterId",
+          select: "companyInfo",
+        },
+      })
+      .populate({
+        path: "studentId",
+        select:
+          "userId personalInfo registrationNumber placements placementStatus",
+      });
 
-    const unauthorizedApps = applications.filter(
-      (app) => app.jobId.recruiterId.toString() !== recruiterId.toString(),
-    );
+    // ✅ BETTER AUTHORIZATION CHECK
+    const unauthorizedApps = applications.filter((app) => {
+      if (!app.jobId || !app.jobId.recruiterId) {
+        console.error(
+          `Missing jobId or recruiterId for application ${app._id}`,
+        );
+        return true; // Treat missing data as unauthorized
+      }
+
+      const jobRecruiterId = app.jobId.recruiterId._id
+        ? app.jobId.recruiterId._id.toString()
+        : app.jobId.recruiterId.toString();
+
+      const currentRecruiterId = recruiterId.toString();
+
+      console.log(
+        `Checking auth: Job recruiter: ${jobRecruiterId}, Current: ${currentRecruiterId}`,
+      );
+
+      return jobRecruiterId !== currentRecruiterId;
+    });
 
     if (unauthorizedApps.length > 0) {
+      console.error(`❌ Unauthorized applications: ${unauthorizedApps.length}`);
+      console.error(
+        "Unauthorized app IDs:",
+        unauthorizedApps.map((a) => a._id),
+      );
       return res.status(403).json({
         success: false,
-        message: "Not authorized to update some applications",
+        message: `Not authorized to update ${unauthorizedApps.length} application(s)`,
       });
     }
 
-    // Update all
+    console.log(
+      `✅ Authorization passed for ${applications.length} applications`,
+    );
+
+    // Update all applications
     const updateData = { status };
-    if (recruiterNotes) updateData.recruiterNotes = recruiterNotes;
 
     if (status === "shortlisted") {
       updateData.shortlistedAt = new Date();
       updateData.shortlistedBy = req.user.userId;
     } else if (status === "rejected") {
       updateData.rejectedAt = new Date();
-      if (rejectionReason) updateData.rejectionReason = rejectionReason;
+    } else if (status === "selected") {
+      updateData.selectedAt = new Date();
     }
 
     await Application.updateMany({ _id: { $in: applicationIds } }, updateData);
+
+    // ✅ ✅ ✅ SEND NOTIFICATIONS TO ALL STUDENTS ✅ ✅ ✅
+    let notificationsSent = 0;
+
+    for (const application of applications) {
+      try {
+        const companyName =
+          application.jobId.recruiterId?.companyInfo?.companyName || "Company";
+        const jobTitle = application.jobId.title;
+        const studentUserId = application.studentId.userId;
+
+        if (!studentUserId) continue;
+
+        // Get notification data based on status
+        let notificationData;
+        let actionUrl = "/student/applications";
+
+        if (status === "shortlisted") {
+          notificationData = notificationTemplates.applicationShortlisted(
+            jobTitle,
+            companyName,
+          );
+          actionUrl = "/student/applications";
+        } else if (status === "rejected") {
+          notificationData = notificationTemplates.applicationRejected(
+            jobTitle,
+            companyName,
+          );
+          actionUrl = "/student/applications";
+        } else if (status === "selected") {
+          notificationData = notificationTemplates.applicationSelected(
+            jobTitle,
+            companyName,
+          );
+          actionUrl = `/student/jobs/${application.jobId._id}`;
+        }
+
+        // Create notification
+        if (notificationData) {
+          await createNotification({
+            userId: studentUserId,
+            userRole: "student",
+            type: notificationData.type,
+            title: notificationData.title,
+            message: notificationData.message,
+            priority: notificationData.priority || "high",
+            relatedJob: application.jobId._id,
+            relatedApplication: application._id,
+            actionUrl,
+          });
+          notificationsSent++;
+        }
+      } catch (notifError) {
+        console.error(
+          `Notification error for application ${application._id}:`,
+          notifError,
+        );
+        // Continue with other notifications
+      }
+    }
+
+    console.log(`✅ Bulk update: ${notificationsSent} notifications sent`);
+
+    // ✅ AUTO-CREATE PLACEMENTS - ONLY CHECK BY APPLICATION ID
+    if (status === "selected") {
+      let placementsCreated = 0;
+      let placementsSkipped = 0;
+      let placementsFailed = 0;
+
+      console.log(
+        `\n🎯 Starting bulk placement creation for ${applications.length} students`,
+      );
+
+      for (const application of applications) {
+        try {
+          const student = await Student.findById(application.studentId._id);
+
+          if (!student) {
+            console.error(`❌ Student not found: ${application.studentId._id}`);
+            placementsFailed++;
+            continue;
+          }
+
+          const job = application.jobId;
+          const companyName =
+            job.company ||
+            job.recruiterId?.companyInfo?.companyName ||
+            "Company";
+          const jobTitle = job.title || job.role || "";
+          const packageAmount =
+            job.package || job.salary || job.salaryRange?.max || 0;
+
+          // ✅ ONLY CHECK BY APPLICATION ID
+          const existingPlacement = student.placements?.find(
+            (p) =>
+              p.metadata?.applicationId?.toString() ===
+              application._id.toString(),
+          );
+
+          if (existingPlacement) {
+            console.log(
+              `ℹ️ Placement already exists for ${student.registrationNumber} (appId: ${application._id})`,
+            );
+            placementsSkipped++;
+            continue;
+          }
+
+          // ✅ CREATE NEW PLACEMENT
+          console.log(
+            `🎯 Creating placement for ${student.registrationNumber} at ${companyName} (${jobTitle})`,
+          );
+
+          const updateResult = await Student.updateOne(
+            { _id: student._id },
+            {
+              $push: {
+                placements: {
+                  company: companyName,
+                  jobTitle: jobTitle,
+                  package: packageAmount,
+                  offerDate: new Date(),
+                  isPrimary: student.placements.length === 0,
+                  metadata: {
+                    jobId: job._id,
+                    applicationId: application._id,
+                  },
+                },
+              },
+              $set: {
+                placementStatus: "placed",
+                placedCompany: companyName,
+                package: packageAmount,
+                placedAt: new Date(),
+              },
+            },
+          );
+
+          if (updateResult.modifiedCount > 0) {
+            placementsCreated++;
+            console.log(`✅ ${student.registrationNumber} marked as PLACED`);
+
+            // Send placement notification
+            try {
+              await createNotification({
+                userId: application.studentId.userId,
+                userRole: "student",
+                type: "placement_offer",
+                title: "🎉 New Job Offer!",
+                message: `Congratulations! You've been selected for ${jobTitle} at ${companyName}. Check "My Placements" to manage your offer.`,
+                actionUrl: "/student/placements",
+                priority: "high",
+                relatedJob: job._id,
+                relatedApplication: application._id,
+              });
+            } catch (notifError) {
+              console.error("Placement notification error:", notifError);
+            }
+          } else {
+            console.warn(
+              `⚠️ Update did not modify ${student.registrationNumber}`,
+            );
+            placementsFailed++;
+          }
+        } catch (placementError) {
+          console.error(
+            `❌ Bulk placement error for application ${application._id}:`,
+            placementError,
+          );
+          console.error("Stack:", placementError.stack);
+          placementsFailed++;
+        }
+      }
+
+      console.log(`\n📊 Bulk Placement Summary:`);
+      console.log(`   ✅ Created: ${placementsCreated}`);
+      console.log(`   ℹ️ Skipped (already exists): ${placementsSkipped}`);
+      console.log(`   ❌ Failed: ${placementsFailed}`);
+      console.log(`   📝 Total processed: ${applications.length}\n`);
+    }
 
     res.json({
       success: true,
@@ -758,7 +1046,6 @@ export const recalculateATSScores = async (req, res) => {
   try {
     const recruiterId = req.user.roleDoc._id;
     const { jobId } = req.params;
-    const { autoShortlistThreshold = 70 } = req.body;
 
     // Verify job belongs to recruiter
     const job = await Job.findById(jobId);
@@ -798,16 +1085,6 @@ export const recalculateATSScores = async (req, res) => {
           recommendation: atsScoreData.recommendation,
           calculatedAt: new Date(),
         };
-
-        // Auto-shortlist if score is above threshold
-        if (atsScoreData.score >= autoShortlistThreshold) {
-          app.status = "shortlisted";
-          app.shortlistedAt = new Date();
-          app.shortlistedBy = req.user.userId;
-          app.recruiterNotes = `Auto-shortlisted: ATS Score ${atsScoreData.score}%`;
-          shortlisted++;
-        }
-
         await app.save();
         processed++;
       } catch (error) {
@@ -829,6 +1106,271 @@ export const recalculateATSScores = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to calculate ATS scores",
+    });
+  }
+};
+
+// @desc    Export job applications to Excel (Recruiter)
+// @route   GET /api/applications/job/:jobId/export
+// @access  Private (Recruiter)
+export const exportJobApplications = async (req, res) => {
+  try {
+    const recruiterId = req.user.roleDoc._id;
+    const { jobId } = req.params;
+    const { status } = req.query; // 'selected' or 'all'
+
+    // Verify job belongs to recruiter
+    const job = await Job.findById(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    if (job.recruiterId.toString() !== recruiterId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to export these applications",
+      });
+    }
+
+    // Build filter
+    const filter = { jobId };
+    if (status && status !== "all") {
+      filter.status = status;
+    }
+
+    const applications = await Application.find(filter)
+      .populate({
+        path: "studentId",
+        select: "personalInfo academicInfo registrationNumber",
+      })
+      .sort({ createdAt: -1 });
+
+    // Import ExcelJS
+    const ExcelJS = (await import("exceljs")).default;
+
+    // Create Excel workbook
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Applications");
+
+    // Define columns (same as admin - 5 columns)
+    worksheet.columns = [
+      { header: "Registration No", key: "regNo", width: 15 },
+      { header: "Name", key: "name", width: 25 },
+      { header: "Branch", key: "branch", width: 10 },
+      { header: "Phone", key: "phone", width: 15 },
+      { header: "Email", key: "email", width: 30 },
+    ];
+
+    // Style header row
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    worksheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4472C4" },
+    };
+    worksheet.getRow(1).alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+    worksheet.getRow(1).height = 25;
+
+    // Add data rows
+    applications.forEach((app) => {
+      const student = app.studentId;
+
+      worksheet.addRow({
+        regNo: student.registrationNumber || "N/A",
+        name:
+          `${student.personalInfo?.firstName || ""} ${student.personalInfo?.lastName || ""}`.trim() ||
+          "N/A",
+        branch: student.academicInfo?.branch || "N/A",
+        phone: student.personalInfo?.phoneNumber || "N/A",
+        email: student.personalInfo?.email || "N/A",
+      });
+    });
+
+    // Add borders to all cells
+    worksheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+      });
+    });
+
+    // Set response headers
+    const statusText = status === "selected" ? "selected" : "all";
+    const filename = `${job.title.replace(/[^a-z0-9]/gi, "_")}_${statusText}_applications.xlsx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+    // Write to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export applications error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export applications",
+    });
+  }
+};
+
+// @desc    Auto-shortlist based on ATS score threshold
+// @route   POST /api/applications/job/:jobId/auto-shortlist
+// @access  Private (Recruiter)
+export const autoShortlistByATS = async (req, res) => {
+  try {
+    const recruiterId = req.user.roleDoc._id;
+    const { jobId } = req.params;
+    const { threshold } = req.body;
+
+    // Validate threshold
+    if (!threshold || threshold < 0 || threshold > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid ATS threshold (0-100)",
+      });
+    }
+
+    // Verify job belongs to recruiter
+    const job = await Job.findById(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    if (job.recruiterId.toString() !== recruiterId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
+    }
+
+    // Get all applications with ATS scores
+    const applications = await Application.find({
+      jobId,
+      "atsScore.score": { $exists: true, $ne: null },
+    }).populate({
+      path: "studentId",
+      select: "userId personalInfo registrationNumber",
+    });
+
+    if (applications.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No applications with ATS scores found. Calculate ATS scores first.",
+      });
+    }
+
+    let shortlisted = 0;
+    let rejected = 0;
+    const errors = [];
+
+    // Process each application
+    for (const app of applications) {
+      try {
+        const atsScore = app.atsScore.score;
+        const oldStatus = app.status;
+
+        // Skip if already selected (don't change selected students)
+        if (oldStatus === "selected") {
+          continue;
+        }
+
+        // Determine new status based on threshold
+        const newStatus = atsScore >= threshold ? "shortlisted" : "rejected";
+
+        // Only update if status actually changes
+        if (oldStatus !== newStatus) {
+          app.status = newStatus;
+
+          if (newStatus === "shortlisted") {
+            app.shortlistedAt = new Date();
+            app.shortlistedBy = req.user.userId;
+            shortlisted++;
+          } else {
+            app.rejectedAt = new Date();
+            app.rejectionReason = `ATS score (${atsScore}%) below threshold (${threshold}%)`;
+            rejected++;
+          }
+
+          await app.save();
+
+          // Send notification to student
+          try {
+            const { createNotification, notificationTemplates } =
+              await import("../services/notificationService.js");
+
+            let notificationData;
+            if (newStatus === "shortlisted") {
+              notificationData = notificationTemplates.applicationShortlisted(
+                job.title,
+                job.company || "Company",
+              );
+            } else {
+              notificationData = notificationTemplates.applicationRejected(
+                job.title,
+                job.company || "Company",
+              );
+            }
+
+            await createNotification({
+              userId: app.studentId.userId,
+              userRole: "student",
+              ...notificationData,
+              actionUrl: "/student/applications",
+            });
+          } catch (notifError) {
+            console.error("Notification error:", notifError);
+          }
+        }
+      } catch (error) {
+        console.error(`Error processing application ${app._id}:`, error);
+        errors.push(app._id);
+      }
+    }
+
+    console.log(`\n📊 Auto-Shortlist Summary (Threshold: ${threshold}%)`);
+    console.log(`   ✅ Shortlisted: ${shortlisted}`);
+    console.log(`   ❌ Rejected: ${rejected}`);
+    console.log(
+      `   ⏭️  Skipped (already selected): ${applications.filter((a) => a.status === "selected").length}`,
+    );
+    console.log(`   ⚠️  Errors: ${errors.length}\n`);
+
+    res.json({
+      success: true,
+      message: `Auto-shortlist complete`,
+      summary: {
+        threshold: threshold,
+        totalProcessed: applications.length,
+        shortlisted,
+        rejected,
+        skipped: applications.filter((a) => a.status === "selected").length,
+        errors: errors.length,
+      },
+    });
+  } catch (error) {
+    console.error("Auto-shortlist error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to auto-shortlist applications",
     });
   }
 };

@@ -10,10 +10,18 @@ import {
   verifyAlumni,
   getDashboardStats,
   getAllStudents,
+  getExtensionRequests,
+  reviewExtensionRequest,
+  getExtensionStats,
+  getAdminJobDetails,
+  adminUpdateApplicationStatus,
+  exportJobApplications,
 } from "../controllers/adminController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
 import { getAllApplicationsAdmin } from "../controllers/applicationController.js";
+import { bulkUpdateApplications } from "../controllers/applicationController.js";
+
 import {
   getAllJobsAdmin,
   getPendingJobs,
@@ -59,4 +67,50 @@ router.get(
   getAllApplicationsAdmin,
 );
 
+// ========== EXTENSION REQUEST ROUTES ==========
+router.get(
+  "/extension-requests",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  getExtensionRequests,
+);
+
+router.get(
+  "/extension-requests/stats",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  getExtensionStats,
+);
+
+router.post(
+  "/extension-requests/:studentId/:requestId/review",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  reviewExtensionRequest,
+);
+
+router.get(
+  "/jobs/:jobId",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  getAdminJobDetails,
+);
+router.put(
+  "/applications/:id/status",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  adminUpdateApplicationStatus,
+);
+router.get(
+  "/jobs/:jobId/export",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  exportJobApplications,
+);
+router.patch(
+  "/applications/bulk-update",
+  authMiddleware,
+  roleMiddleware(["admin"]),
+  bulkUpdateApplications,
+);
 export default router;

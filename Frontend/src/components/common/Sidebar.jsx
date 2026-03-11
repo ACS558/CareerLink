@@ -13,6 +13,7 @@ const Sidebar = () => {
         { path: "/student/profile", label: "My Profile", icon: "👤" },
         { path: "/student/jobs", label: "Browse Jobs", icon: "💼" },
         { path: "/student/applications", label: "My Applications", icon: "📝" },
+        { path: "/student/placements", label: "My Placements", icon: "🏆" },
         { path: "/notifications", label: "Notifications", icon: "🔔" },
       ],
       recruiter: [
@@ -39,6 +40,11 @@ const Sidebar = () => {
         { path: "/admin/jobs", label: "All Jobs", icon: "💼" },
         { path: "/admin/jobs/pending", label: "Pending Jobs", icon: "⏳" },
         { path: "/admin/applications", label: "All Applications", icon: "📝" },
+        {
+          path: "/admin/extension-requests",
+          label: "Extension Requests",
+          icon: "⏰",
+        },
         { path: "/admin/analytics", label: "Analytics", icon: "📈" },
         { path: "/notifications", label: "Notifications", icon: "🔔" },
       ],

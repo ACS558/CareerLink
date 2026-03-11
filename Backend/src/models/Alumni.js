@@ -77,7 +77,7 @@ const alumniSchema = new mongoose.Schema(
     },
     verificationStatus: {
       type: String,
-      enum: ["pending", "verified", "rejected"],
+      enum: ["pending", "approved", "rejected"],
       default: "pending",
     },
     verifiedBy: {

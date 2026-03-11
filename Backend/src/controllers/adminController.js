@@ -8,6 +8,9 @@ import {
   createNotification,
   notificationTemplates,
 } from "../services/notificationService.js";
+import ExcelJS from "exceljs";
+import Job from "../models/Job.js";
+import Application from "../models/Application.js";
 
 // @desc    Get admin profile
 // @route   GET /api/admin/profile
@@ -645,6 +648,547 @@ export const getAllStudents = async (req, res) => {
     res.status(500).json({
       message: "Server error",
       error: error.message,
+    });
+  }
+};
+
+// ========== EXTENSION REQUEST MANAGEMENT ==========
+
+// @desc    Get all extension requests
+// @route   GET /api/admin/extension-requests
+// @access  Private (Admin only)
+export const getExtensionRequests = async (req, res) => {
+  try {
+    const { status } = req.query; // pending, approved, rejected
+
+    const filter = {};
+    if (status) {
+      filter["extensionRequests.status"] = status;
+    }
+
+    const students = await Student.find(filter)
+      .populate("userId", "email")
+      .select(
+        "registrationNumber personalInfo extensionRequests accountStatus expiryDate",
+      )
+      .lean();
+
+    // Flatten extension requests
+    const requests = [];
+    students.forEach((student) => {
+      if (student.extensionRequests && student.extensionRequests.length > 0) {
+        student.extensionRequests.forEach((request) => {
+          if (!status || request.status === status) {
+            requests.push({
+              _id: request._id,
+              studentId: student._id,
+              registrationNumber: student.registrationNumber,
+              name: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
+              email: student.userId?.email,
+              reason: request.reason,
+              status: request.status,
+              requestedAt: request.requestedAt,
+              reviewedAt: request.reviewedAt,
+              accountStatus: student.accountStatus,
+              expiryDate: student.expiryDate,
+            });
+          }
+        });
+      }
+    });
+
+    // Sort by date (newest first)
+    requests.sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+
+    res.json({
+      success: true,
+      count: requests.length,
+      requests,
+    });
+  } catch (error) {
+    console.error("Get extension requests error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch extension requests",
+    });
+  }
+};
+
+// @desc    Review extension request (approve/reject)
+// @route   POST /api/admin/extension-requests/:studentId/:requestId/review
+// @access  Private (Admin only)
+export const reviewExtensionRequest = async (req, res) => {
+  try {
+    const { studentId, requestId } = req.params;
+    const { action, extensionDays } = req.body; // action: 'approve' or 'reject'
+    const adminId = req.user.userId;
+
+    if (!["approve", "reject"].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid action. Use approve or reject",
+      });
+    }
+
+    const student = await Student.findById(studentId).populate(
+      "userId",
+      "email",
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        message: "Student not found",
+      });
+    }
+
+    // Find the specific request
+    const request = student.extensionRequests.id(requestId);
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Extension request not found",
+      });
+    }
+
+    if (request.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Request has already been reviewed",
+      });
+    }
+
+    // Update request status
+    request.status = action === "approve" ? "approved" : "rejected";
+    request.reviewedBy = adminId;
+    request.reviewedAt = new Date();
+
+    // If approved, extend expiry date
+    if (action === "approve") {
+      const daysToAdd = extensionDays || 30; // Default 30 days
+      const currentExpiry = new Date(student.expiryDate);
+      currentExpiry.setDate(currentExpiry.getDate() + daysToAdd);
+      student.expiryDate = currentExpiry;
+
+      // Also update deletion date
+      const newDeletion = new Date(currentExpiry);
+      newDeletion.setDate(newDeletion.getDate() + 90);
+      student.deletionScheduledAt = newDeletion;
+
+      // If account was expired, reactivate it
+      if (student.accountStatus === "expired") {
+        student.accountStatus = "active";
+      }
+    }
+
+    await student.save();
+
+    // ✅ CREATE NOTIFICATION FOR STUDENT
+    const notificationData =
+      action === "approve"
+        ? notificationTemplates.extensionApproved(extensionDays)
+        : notificationTemplates.extensionRejected();
+
+    await createNotification({
+      userId: student.userId._id,
+      userRole: "student",
+      ...notificationData,
+      actionUrl: "/student/dashboard",
+    });
+
+    // ✅ Log for admin notification (will be handled by frontend polling)
+    console.log(
+      `Extension request ${action}ed for student ${student.registrationNumber}`,
+    );
+
+    res.json({
+      success: true,
+      message: `Request ${action}ed successfully`,
+      student: {
+        name: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
+        expiryDate: student.expiryDate,
+        accountStatus: student.accountStatus,
+      },
+    });
+  } catch (error) {
+    console.error("Review extension request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to review request",
+    });
+  }
+};
+
+// @desc    Get extension request statistics
+// @route   GET /api/admin/extension-requests/stats
+// @access  Private (Admin only)
+export const getExtensionStats = async (req, res) => {
+  try {
+    const students = await Student.find({
+      extensionRequests: { $exists: true, $ne: [] },
+    }).select("extensionRequests");
+
+    let pending = 0,
+      approved = 0,
+      rejected = 0;
+
+    students.forEach((student) => {
+      student.extensionRequests.forEach((req) => {
+        if (req.status === "pending") pending++;
+        else if (req.status === "approved") approved++;
+        else if (req.status === "rejected") rejected++;
+      });
+    });
+
+    res.json({
+      success: true,
+      stats: {
+        total: pending + approved + rejected,
+        pending,
+        approved,
+        rejected,
+      },
+    });
+  } catch (error) {
+    console.error("Extension stats error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch stats",
+    });
+  }
+};
+
+// @desc    Get single job with applications (admin)
+// @route   GET /api/admin/jobs/:jobId
+// @access  Private (Admin)
+export const getAdminJobDetails = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await Job.findById(jobId).populate(
+      "recruiterId",
+      "companyInfo contactPerson",
+    );
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    // Get all applications for this job
+    const applications = await Application.find({ jobId })
+      .populate({
+        path: "studentId",
+        select: "personalInfo academicInfo registrationNumber",
+      })
+      .sort({ createdAt: -1 });
+
+    // Get stats
+    const stats = {
+      total: applications.length,
+      pending: applications.filter((a) => a.status === "pending").length,
+      shortlisted: applications.filter((a) => a.status === "shortlisted")
+        .length,
+      selected: applications.filter((a) => a.status === "selected").length,
+      rejected: applications.filter((a) => a.status === "rejected").length,
+    };
+
+    res.json({
+      success: true,
+      job,
+      applications,
+      stats,
+    });
+  } catch (error) {
+    console.error("Get admin job details error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch job details",
+    });
+  }
+};
+
+// @desc    Update application status (admin)
+// @route   PUT /api/admin/applications/:id/status
+// @access  Private (Admin)
+export const adminUpdateApplicationStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!["pending", "shortlisted", "selected", "rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status",
+      });
+    }
+
+    const application = await Application.findById(id)
+      .populate({
+        path: "jobId",
+        populate: { path: "recruiterId", select: "companyInfo" },
+      })
+      .populate({
+        path: "studentId",
+        select:
+          "userId personalInfo registrationNumber placements placementStatus",
+      });
+
+    if (!application) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+
+    const oldStatus = application.status;
+    application.status = status;
+
+    if (status === "shortlisted") {
+      application.shortlistedAt = new Date();
+    } else if (status === "selected") {
+      application.selectedAt = new Date();
+    } else if (status === "rejected") {
+      application.rejectedAt = new Date();
+    }
+
+    await application.save();
+
+    // ✅ AUTO-CREATE PLACEMENT - ONLY CHECK BY APPLICATION ID
+    if (status === "selected" && oldStatus !== "selected") {
+      try {
+        const student = await Student.findById(application.studentId._id);
+
+        if (student) {
+          const job = application.jobId;
+          const companyName =
+            job.company ||
+            job.recruiterId?.companyInfo?.companyName ||
+            "Company";
+          const jobTitle = job.title || "";
+          const packageAmount =
+            job.package || job.salary || job.salaryRange?.max || 0;
+
+          // ✅ ONLY CHECK BY APPLICATION ID
+          const existingPlacement = student.placements?.find(
+            (p) =>
+              p.metadata?.applicationId?.toString() ===
+              application._id.toString(),
+          );
+
+          if (existingPlacement) {
+            console.log(
+              `ℹ️ Placement already exists for application ${application._id}`,
+            );
+          } else {
+            // ✅ CREATE NEW PLACEMENT
+            console.log(
+              `🎯 Admin creating placement for ${student.registrationNumber} at ${companyName}`,
+            );
+
+            await Student.updateOne(
+              { _id: student._id },
+              {
+                $push: {
+                  placements: {
+                    company: companyName,
+                    jobTitle: jobTitle,
+                    package: packageAmount,
+                    offerDate: new Date(),
+                    isPrimary: student.placements.length === 0,
+                    metadata: {
+                      jobId: job._id,
+                      applicationId: application._id,
+                    },
+                  },
+                },
+                $set: {
+                  placementStatus: "placed",
+                  placedCompany: companyName,
+                  package: packageAmount,
+                  placedAt: new Date(),
+                },
+              },
+            );
+
+            console.log(
+              `✅ Admin: ${student.registrationNumber} marked as PLACED`,
+            );
+
+            // Send notification
+            await createNotification({
+              userId: application.studentId.userId,
+              userRole: "student",
+              type: "placement_offer",
+              title: "🎉 New Job Offer!",
+              message: `You've been selected for ${job.title} at ${companyName}. Check "My Placements" to view details.`,
+              actionUrl: "/student/placements",
+              priority: "high",
+              relatedJob: job._id,
+              relatedApplication: application._id,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Admin placement creation error:", error);
+      }
+    }
+
+    // Send generic status notification
+    let notificationData;
+    const jobTitle = application.jobId.title;
+    const companyName =
+      application.jobId.recruiterId?.companyInfo?.companyName || "Company";
+
+    if (status === "shortlisted") {
+      notificationData = {
+        type: "application_shortlisted",
+        title: "Application Shortlisted! 🎉",
+        message: `Your application for ${jobTitle} at ${companyName} has been shortlisted.`,
+        priority: "high",
+      };
+    } else if (status === "selected") {
+      notificationData = {
+        type: "application_selected",
+        title: "You're Selected! 🎊",
+        message: `Your application for ${jobTitle} at ${companyName} has been selected.`,
+        priority: "high",
+      };
+    } else if (status === "rejected") {
+      notificationData = {
+        type: "application_rejected",
+        title: "Application Update",
+        message: `Your application for ${jobTitle} at ${companyName} status has been updated.`,
+        priority: "medium",
+      };
+    }
+
+    if (notificationData) {
+      await createNotification({
+        userId: application.studentId.userId,
+        userRole: "student",
+        ...notificationData,
+        actionUrl: "/student/applications",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Application status updated",
+      application,
+    });
+  } catch (error) {
+    console.error("Admin update application error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update application",
+    });
+  }
+};
+
+// @desc    Export applications to Excel (SIMPLIFIED COLUMNS)
+// @route   GET /api/admin/jobs/:jobId/export
+// @access  Private (Admin)
+export const exportJobApplications = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { status } = req.query; // 'selected' or 'all'
+
+    const job = await Job.findById(jobId);
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found",
+      });
+    }
+
+    // Build filter
+    const filter = { jobId };
+    if (status && status !== "all") {
+      filter.status = status;
+    }
+
+    const applications = await Application.find(filter)
+      .populate({
+        path: "studentId",
+        select: "personalInfo academicInfo registrationNumber",
+      })
+      .sort({ createdAt: -1 });
+
+    // Create Excel workbook
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Applications");
+
+    // ✅ SIMPLIFIED COLUMNS - Only 5 columns as requested
+    worksheet.columns = [
+      { header: "Registration No", key: "regNo", width: 15 },
+      { header: "Name", key: "name", width: 25 },
+      { header: "Branch", key: "branch", width: 10 },
+      { header: "Phone", key: "phone", width: 15 },
+      { header: "Email", key: "email", width: 30 },
+    ];
+
+    // Style header row
+    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    worksheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FF4472C4" },
+    };
+    worksheet.getRow(1).alignment = {
+      vertical: "middle",
+      horizontal: "center",
+    };
+    worksheet.getRow(1).height = 25;
+
+    // Add data rows
+    applications.forEach((app) => {
+      const student = app.studentId;
+
+      worksheet.addRow({
+        regNo: student.registrationNumber || "N/A",
+        name:
+          `${student.personalInfo?.firstName || ""} ${student.personalInfo?.lastName || ""}`.trim() ||
+          "N/A",
+        branch: student.academicInfo?.branch || "N/A",
+        phone: student.personalInfo?.phoneNumber || "N/A",
+        email: student.personalInfo?.email || "N/A",
+      });
+    });
+
+    // Add borders to all cells
+    worksheet.eachRow((row, rowNumber) => {
+      row.eachCell((cell) => {
+        cell.border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+      });
+    });
+
+    // Set response headers
+    const statusText = status === "selected" ? "selected" : "all";
+    const filename = `${job.title.replace(/[^a-z0-9]/gi, "_")}_${statusText}_applications.xlsx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+    // Write to response
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error) {
+    console.error("Export applications error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to export applications",
     });
   }
 };

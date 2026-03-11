@@ -109,4 +109,29 @@ export const notificationTemplates = {
     message: `Your alumni account was not approved. Reason: ${reason}`,
     priority: "high",
   }),
+  extensionApproved: (days) => ({
+    type: "extension_approved",
+    title: "✅ Extension Request Approved",
+    message: `Your account extension request has been approved! Your account is now valid for ${days} more days.`,
+  }),
+
+  extensionRejected: () => ({
+    type: "extension_rejected",
+    title: "❌ Extension Request Rejected",
+    message:
+      "Your account extension request has been reviewed and rejected. Please contact administration for more details.",
+  }),
+
+  newExtensionRequest: (studentName, registrationNumber) => ({
+    type: "extension_request",
+    title: "📝 New Extension Request",
+    message: `${studentName} (${registrationNumber}) has requested an account extension.`,
+  }),
+
+  placementOffer: (jobTitle, companyName) => ({
+    type: "placement_offer",
+    title: "🎉 New Job Offer!",
+    message: `Congratulations! You've been selected for ${jobTitle} at ${companyName}. Check "My Placements" to manage your offer.`,
+    priority: "high",
+  }),
 };

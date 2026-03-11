@@ -2,7 +2,10 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/common/Navbar";
 import Sidebar from "../../components/common/Sidebar";
-import api from "../../services/api";
+import PlacedStudentGuidance from "../../pages/student/PlacedStudentGuidance";
+import UnplacedStudentGuidance from "../../pages/student/UnplacedStudentGuidance";
+import api, { studentAPI } from "../../services/api";
+import toast from "react-hot-toast";
 import {
   LineChart,
   Line,
@@ -19,22 +22,38 @@ import {
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
+
+  // Dashboard mode state
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dashboardMode, setDashboardMode] = useState("normal");
+
+  // Stats state
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchDashboardStats();
+    fetchDashboardData();
   }, []);
 
-  const fetchDashboardStats = async () => {
+  const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/analytics/student/dashboard");
-      if (response.data.success) {
-        setStats(response.data.stats);
+
+      // Fetch dashboard mode info
+      const dashboardResponse = await studentAPI.getDashboard();
+      setDashboardData(dashboardResponse.data);
+      setDashboardMode(dashboardResponse.data.dashboardMode);
+
+      // Only fetch stats if in normal mode
+      if (dashboardResponse.data.dashboardMode === "normal") {
+        const statsResponse = await api.get("/analytics/student/dashboard");
+        if (statsResponse.data.success) {
+          setStats(statsResponse.data.stats);
+        }
       }
     } catch (error) {
-      console.error("Error fetching dashboard stats:", error);
+      console.error("Error fetching dashboard:", error);
+      toast.error("Failed to load dashboard");
     } finally {
       setLoading(false);
     }
@@ -58,6 +77,42 @@ const StudentDashboard = () => {
       </div>
     );
   }
+
+  // ============================================
+  // CAREER GUIDANCE MODE
+  // ============================================
+  if (dashboardMode === "career_guidance" && dashboardData) {
+    const { daysUntilExpiry, placementStatus, student } = dashboardData;
+
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <div className="flex">
+          <Sidebar />
+          <div className="flex-1 p-6 lg:p-8">
+            <div className="max-w-6xl mx-auto">
+              <h1 className="text-2xl font-bold text-gray-900 mb-6">
+                Career Guidance
+              </h1>
+
+              {placementStatus === "placed" ? (
+                <PlacedStudentGuidance
+                  daysLeft={daysUntilExpiry}
+                  student={student}
+                />
+              ) : (
+                <UnplacedStudentGuidance daysLeft={daysUntilExpiry} />
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================
+  // NORMAL MODE - Original Dashboard
+  // ============================================
 
   // Colors for charts
   const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"];
