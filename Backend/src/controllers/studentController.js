@@ -397,20 +397,23 @@ export const requestAccountExtension = async (req, res) => {
 
       // Create notification for each admin
       for (const admin of admins) {
-        await createNotification({
-          userId: admin._id,
-          userRole: "admin",
-          type: "extension_request",
-          title: "📝 New Extension Request",
-          message: `${student.personalInfo?.firstName || "A student"} ${student.personalInfo?.lastName || ""} (${student.registrationNumber}) has requested an account extension.`,
-          actionUrl: "/admin/extension-requests",
-          metadata: {
-            studentId: student._id,
-            studentName: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
-            registrationNumber: student.registrationNumber,
-            reason: reason.trim(),
+        await createNotification(
+          {
+            userId: admin._id,
+            userRole: "admin",
+            type: "extension_request",
+            title: "📝 New Extension Request",
+            message: `${student.personalInfo?.firstName || "A student"} ${student.personalInfo?.lastName || ""} (${student.registrationNumber}) has requested an account extension.`,
+            actionUrl: "/admin/extension-requests",
+            metadata: {
+              studentId: student._id,
+              studentName: `${student.personalInfo?.firstName} ${student.personalInfo?.lastName}`,
+              registrationNumber: student.registrationNumber,
+              reason: reason.trim(),
+            },
           },
-        });
+          req.app.get("io"),
+        );
       }
 
       console.log(`✅ Created ${admins.length} notifications for admins`);

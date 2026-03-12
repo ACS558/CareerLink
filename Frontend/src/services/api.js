@@ -156,7 +156,7 @@ export const adminAPI = {
     }),
 
   getJobDetails: (jobId) => api.get(`/admin/jobs/${jobId}`),
-  updateApplicationStatus: (applicationId, data) =>
+  adminUpdateApplicationStatus: (applicationId, data) =>
     api.put(`/admin/applications/${applicationId}/status`, data),
   exportJobApplications: (jobId, status = "all") =>
     api.get(`/admin/jobs/${jobId}/export`, {

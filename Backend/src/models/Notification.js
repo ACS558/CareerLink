@@ -18,13 +18,15 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
-        "job_posted",
+        "new_job_posted",
+        "new_job_pending",
         "job_approved",
         "job_rejected",
         "application_received",
         "application_shortlisted",
         "application_rejected",
         "application_selected",
+        "application_pending",
         "recruiter_approved",
         "recruiter_rejected",
         "alumni_approved",

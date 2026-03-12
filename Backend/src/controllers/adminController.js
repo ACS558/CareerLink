@@ -215,12 +215,15 @@ export const verifyRecruiter = async (req, res) => {
 
       // CREATE NOTIFICATION - Recruiter Approved
       const notificationData = notificationTemplates.recruiterApproved();
-      await createNotification({
-        userId: recruiter.userId._id,
-        userRole: "recruiter",
-        ...notificationData,
-        actionUrl: "/recruiter/dashboard",
-      });
+      await createNotification(
+        {
+          userId: recruiter.userId._id,
+          userRole: "recruiter",
+          ...notificationData,
+          actionUrl: "/recruiter/dashboard",
+        },
+        req.app.get("io"),
+      );
 
       res.json({
         message: `${recruiter.companyInfo.companyName} has been approved successfully`,
@@ -256,12 +259,15 @@ export const verifyRecruiter = async (req, res) => {
       // CREATE NOTIFICATION - Recruiter Rejected
       const notificationData =
         notificationTemplates.recruiterRejected(rejectionReason);
-      await createNotification({
-        userId: recruiter.userId._id,
-        userRole: "recruiter",
-        ...notificationData,
-        actionUrl: "/recruiter/dashboard",
-      });
+      await createNotification(
+        {
+          userId: recruiter.userId._id,
+          userRole: "recruiter",
+          ...notificationData,
+          actionUrl: "/recruiter/dashboard",
+        },
+        req.app.get("io"),
+      );
 
       res.json({
         message: `${recruiter.companyInfo.companyName} has been rejected`,
@@ -414,12 +420,15 @@ export const verifyAlumni = async (req, res) => {
 
       // CREATE NOTIFICATION - Alumni Approved
       const notificationData = notificationTemplates.alumniApproved();
-      await createNotification({
-        userId: alumni.userId._id,
-        userRole: "alumni",
-        ...notificationData,
-        actionUrl: "/alumni/dashboard",
-      });
+      await createNotification(
+        {
+          userId: alumni.userId._id,
+          userRole: "alumni",
+          ...notificationData,
+          actionUrl: "/alumni/dashboard",
+        },
+        req.app.get("io"),
+      );
 
       res.json({
         message: `${alumni.personalInfo.firstName} ${alumni.personalInfo.lastName} has been approved successfully`,
@@ -455,12 +464,15 @@ export const verifyAlumni = async (req, res) => {
       // CREATE NOTIFICATION - Alumni Rejected
       const notificationData =
         notificationTemplates.alumniRejected(rejectionReason);
-      await createNotification({
-        userId: alumni.userId._id,
-        userRole: "alumni",
-        ...notificationData,
-        actionUrl: "/alumni/dashboard",
-      });
+      await createNotification(
+        {
+          userId: alumni.userId._id,
+          userRole: "alumni",
+          ...notificationData,
+          actionUrl: "/alumni/dashboard",
+        },
+        req.app.get("io"),
+      );
 
       res.json({
         message: `${alumni.personalInfo.firstName} ${alumni.personalInfo.lastName} has been rejected`,
@@ -790,12 +802,15 @@ export const reviewExtensionRequest = async (req, res) => {
         ? notificationTemplates.extensionApproved(extensionDays)
         : notificationTemplates.extensionRejected();
 
-    await createNotification({
-      userId: student.userId._id,
-      userRole: "student",
-      ...notificationData,
-      actionUrl: "/student/dashboard",
-    });
+    await createNotification(
+      {
+        userId: student.userId._id,
+        userRole: "student",
+        ...notificationData,
+        actionUrl: "/student/dashboard",
+      },
+      req.app.get("io"),
+    );
 
     // ✅ Log for admin notification (will be handled by frontend polling)
     console.log(
@@ -957,7 +972,7 @@ export const adminUpdateApplicationStatus = async (req, res) => {
 
     await application.save();
 
-    // ✅ AUTO-CREATE PLACEMENT - ONLY CHECK BY APPLICATION ID
+    // ✅ AUTO-CREATE PLACEMENT - ONLY FOR SELECTED STATUS
     if (status === "selected" && oldStatus !== "selected") {
       try {
         const student = await Student.findById(application.studentId._id);
@@ -1018,18 +1033,18 @@ export const adminUpdateApplicationStatus = async (req, res) => {
               `✅ Admin: ${student.registrationNumber} marked as PLACED`,
             );
 
-            // Send notification
-            await createNotification({
-              userId: application.studentId.userId,
-              userRole: "student",
-              type: "placement_offer",
-              title: "🎉 New Job Offer!",
-              message: `You've been selected for ${job.title} at ${companyName}. Check "My Placements" to view details.`,
-              actionUrl: "/student/placements",
-              priority: "high",
-              relatedJob: job._id,
-              relatedApplication: application._id,
-            });
+            // ✅ Send placement notification
+            await createNotification(
+              {
+                userId: application.studentId.userId,
+                userRole: "student",
+                ...notificationTemplates.placementOffer(jobTitle, companyName),
+                actionUrl: "/student/placements",
+                relatedJob: job._id,
+                relatedApplication: application._id,
+              },
+              req.app.get("io"),
+            );
           }
         }
       } catch (error) {
@@ -1037,42 +1052,62 @@ export const adminUpdateApplicationStatus = async (req, res) => {
       }
     }
 
-    // Send generic status notification
-    let notificationData;
+    // ✅ SEND STATUS CHANGE NOTIFICATION
     const jobTitle = application.jobId.title;
     const companyName =
       application.jobId.recruiterId?.companyInfo?.companyName || "Company";
 
-    if (status === "shortlisted") {
-      notificationData = {
-        type: "application_shortlisted",
-        title: "Application Shortlisted! 🎉",
-        message: `Your application for ${jobTitle} at ${companyName} has been shortlisted.`,
-        priority: "high",
-      };
-    } else if (status === "selected") {
-      notificationData = {
-        type: "application_selected",
-        title: "You're Selected! 🎊",
-        message: `Your application for ${jobTitle} at ${companyName} has been selected.`,
-        priority: "high",
-      };
-    } else if (status === "rejected") {
-      notificationData = {
-        type: "application_rejected",
-        title: "Application Update",
-        message: `Your application for ${jobTitle} at ${companyName} status has been updated.`,
-        priority: "medium",
-      };
+    let notificationData;
+    let actionUrl = "/student/applications";
+
+    switch (status) {
+      case "pending":
+        notificationData = notificationTemplates.applicationPending(
+          jobTitle,
+          companyName,
+        );
+        break;
+
+      case "shortlisted":
+        notificationData = notificationTemplates.applicationShortlisted(
+          jobTitle,
+          companyName,
+        );
+        break;
+
+      case "selected":
+        notificationData = notificationTemplates.applicationSelected(
+          jobTitle,
+          companyName,
+        );
+        actionUrl = `/student/jobs/${application.jobId._id}`;
+        break;
+
+      case "rejected":
+        notificationData = notificationTemplates.applicationRejected(
+          jobTitle,
+          companyName,
+        );
+        break;
     }
 
     if (notificationData) {
-      await createNotification({
-        userId: application.studentId.userId,
-        userRole: "student",
-        ...notificationData,
-        actionUrl: "/student/applications",
-      });
+      await createNotification(
+        {
+          userId: application.studentId.userId,
+          userRole: "student",
+          type: notificationData.type,
+          title: notificationData.title,
+          message: notificationData.message,
+          priority: notificationData.priority || "high",
+          relatedJob: application.jobId._id,
+          relatedApplication: application._id,
+          actionUrl,
+        },
+        req.app.get("io"),
+      );
+
+      console.log(`✅ Admin notification sent: ${oldStatus} → ${status}`);
     }
 
     res.json({
@@ -1095,7 +1130,7 @@ export const adminUpdateApplicationStatus = async (req, res) => {
 export const exportJobApplications = async (req, res) => {
   try {
     const { jobId } = req.params;
-    const { status } = req.query; // 'selected' or 'all'
+    const { status, branch, company } = req.query; // 'selected' or 'all'
 
     const job = await Job.findById(jobId);
     if (!job) {
@@ -1109,6 +1144,15 @@ export const exportJobApplications = async (req, res) => {
     const filter = { jobId };
     if (status && status !== "all") {
       filter.status = status;
+    }
+
+    // ✅ NEW: Branch filter
+    if (branch && branch !== "all") {
+      const studentsInBranch = await Student.find({
+        "academicInfo.branch": branch,
+      }).select("_id");
+
+      filter.studentId = { $in: studentsInBranch.map((s) => s._id) };
     }
 
     const applications = await Application.find(filter)

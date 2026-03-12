@@ -4,12 +4,15 @@ import cors from "cors";
 import connectDB from "./src/config/database.js";
 import routes from "./src/routes/index.js";
 import { initializeCronJobs } from "./src/config/cronJobs.js";
+import { initializeSocket } from "./src/socket/socketServer.js";
+import http from "http";
 
 // Load environment variables
 dotenv.config();
 
 // Create Express app
 const app = express();
+const server = http.createServer(app);
 
 // Connect to MongoDB
 connectDB();
@@ -26,7 +29,8 @@ app.use(
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+const io = initializeSocket(server);
+app.set("io", io);
 // Request logging middleware (development)
 if (process.env.NODE_ENV === "development") {
   app.use((req, res, next) => {
@@ -68,7 +72,7 @@ app.use((req, res) => {
 // Start server
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📝 Environment: ${process.env.NODE_ENV}`);

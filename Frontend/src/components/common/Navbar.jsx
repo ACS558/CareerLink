@@ -8,6 +8,7 @@ import {
   alumniAPI,
 } from "../../services/api";
 import NotificationBell from "./NotificationBell";
+import socket from "../../socket/socketClient";
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -38,6 +39,13 @@ const Navbar = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ✅ UPDATED: Disconnect socket on logout
+  const handleLogout = () => {
+    console.log("🔌 Disconnecting socket...");
+    socket.disconnect();
+    logout();
   };
 
   const getRoleName = (role) => {
@@ -103,7 +111,7 @@ const Navbar = () => {
               {user?.email}
             </span>
 
-            {/* Notification Bell - ADD THIS */}
+            {/* Notification Bell */}
             <NotificationBell />
 
             {/* Profile Photo/Avatar */}
@@ -137,7 +145,7 @@ const Navbar = () => {
 
             {/* Logout Button */}
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
             >
               Logout

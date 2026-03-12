@@ -1,5 +1,7 @@
 import Job from "../models/Job.js";
 import Recruiter from "../models/Recruiter.js";
+import Student from "../models/Student.js";
+import Admin from "../models/Admin.js"; // ✅ ADD THIS
 import {
   createNotification,
   notificationTemplates,
@@ -20,7 +22,51 @@ export const createJob = async (req, res) => {
     const job = await Job.create(jobData);
 
     // Populate recruiter info
-    await job.populate("recruiterId", "companyInfo");
+    await job.populate("recruiterId", "companyInfo userId");
+
+    console.log("✅ Job created:", job._id);
+
+    // ✅ NOTIFY ALL ADMINS ABOUT NEW JOB PENDING APPROVAL
+    try {
+      const io = req.app.get("io");
+
+      // Get all active admins
+      const admins = await Admin.find()
+        .select("userId personalInfo.name")
+        .populate("userId", "_id email");
+
+      // Get company name
+      const companyName =
+        job.company || job.recruiterId?.companyInfo?.companyName || "Company";
+
+      console.log(
+        `📢 Notifying ${admins.length} admins about new job pending approval`,
+      );
+
+      // Create notifications for all admins
+      const adminNotifications = admins.map((admin) =>
+        createNotification(
+          {
+            userId: admin.userId._id,
+            userRole: "admin",
+            type: "new_job_pending",
+            title: "📝 New Job Pending Approval",
+            message: `${companyName} posted a new job: ${job.title}. Review and approve.`,
+            priority: "high",
+            relatedJob: job._id,
+            relatedUser: recruiterId,
+            actionUrl: `/admin/jobs/${job._id}`,
+          },
+          io,
+        ),
+      );
+
+      await Promise.all(adminNotifications);
+      console.log(`✅ Notified ${admins.length} admins about pending job`);
+    } catch (notifError) {
+      console.error("Admin notification error:", notifError);
+      // Don't fail job creation if notification fails
+    }
 
     res.status(201).json({
       success: true,
@@ -354,31 +400,108 @@ export const verifyJob = async (req, res) => {
 
     await job.save();
 
-    // NOTIFY RECRUITER
+    const io = req.app.get("io");
+
+    // ✅ 1. NOTIFY RECRUITER (existing code)
     const recruiterUserId = job.recruiterId.userId._id;
-    let notificationData;
+    let recruiterNotificationData;
     const actionUrl = `/recruiter/jobs/${job._id}`;
 
     if (action === "approve") {
-      notificationData = notificationTemplates.jobApproved(job.title);
+      recruiterNotificationData = notificationTemplates.jobApproved(job.title);
     } else {
-      notificationData = notificationTemplates.jobRejected(
+      recruiterNotificationData = notificationTemplates.jobRejected(
         job.title,
         rejectionReason,
       );
     }
 
-    await createNotification({
-      userId: recruiterUserId,
-      userRole: "recruiter",
-      ...notificationData,
-      relatedJob: job._id,
-      actionUrl,
-    });
+    await createNotification(
+      {
+        userId: recruiterUserId,
+        userRole: "recruiter",
+        ...recruiterNotificationData,
+        relatedJob: job._id,
+        actionUrl,
+      },
+      io,
+    );
+
+    console.log(`✅ Recruiter notified: Job ${action}d`);
+
+    // ✅ 2. NOTIFY ELIGIBLE STUDENTS (only if approved)
+    if (action === "approve") {
+      try {
+        // Build eligibility query
+        const eligibilityQuery = {
+          accountStatus: "active",
+        };
+
+        // Filter by graduation year/batch
+        if (job.eligibleBatch) {
+          eligibilityQuery["academicInfo.graduationYear"] = job.eligibleBatch;
+        }
+
+        // Filter by branches
+        if (job.eligibleBranches && job.eligibleBranches.length > 0) {
+          eligibilityQuery["academicInfo.branch"] = {
+            $in: job.eligibleBranches,
+          };
+        }
+
+        // Filter by minimum CGPA
+        if (job.minCGPA) {
+          eligibilityQuery["academicInfo.cgpa"] = { $gte: job.minCGPA };
+        }
+
+        // Get eligible students
+        const eligibleStudents = await Student.find(eligibilityQuery)
+          .select("userId personalInfo registrationNumber")
+          .populate("userId", "_id email");
+
+        console.log(
+          `📢 Found ${eligibleStudents.length} eligible students for job: ${job.title}`,
+        );
+
+        // Get company name
+        const companyName =
+          job.company || job.recruiterId?.companyInfo?.companyName || "Company";
+
+        // Create notification message
+        const packageInfo = job.package ? ` Package: ₹${job.package} LPA.` : "";
+        const locationInfo = job.location ? ` Location: ${job.location}.` : "";
+
+        // Send notifications to all eligible students
+        const studentNotifications = eligibleStudents.map((student) =>
+          createNotification(
+            {
+              userId: student.userId._id,
+              userRole: "student",
+              type: "new_job_posted",
+              title: "🎯 New Job Opportunity!",
+              message: `${companyName} is hiring for ${job.title}.${packageInfo}${locationInfo} Apply now!`,
+              priority: "high",
+              relatedJob: job._id,
+              actionUrl: `/student/jobs/${job._id}`,
+            },
+            io,
+          ),
+        );
+
+        await Promise.all(studentNotifications);
+
+        console.log(
+          `✅ Successfully notified ${eligibleStudents.length} students about new job`,
+        );
+      } catch (studentNotifError) {
+        console.error("Student notification error:", studentNotifError);
+        // Don't fail the approval if student notifications fail
+      }
+    }
 
     res.json({
       success: true,
-      message: `Job ${action}d successfully`,
+      message: `Job ${action}d successfully${action === "approve" ? " and students notified" : ""}`,
       job,
     });
   } catch (error) {

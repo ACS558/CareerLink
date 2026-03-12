@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authAPI } from "../../services/api";
 import toast from "react-hot-toast";
+import socket from "../../socket/socketClient";
 
 const Login = () => {
   const { login } = useAuth();
@@ -27,11 +28,15 @@ const Login = () => {
       const response = await authAPI.login(formData);
       const { token, user } = response.data;
 
+      // ✅ CONNECT SOCKET IMMEDIATELY AFTER LOGIN
+      console.log("🔌 Connecting to Socket.IO...");
+      socket.connect(token);
+
       toast.success("Login successful!");
       login(token, user);
     } catch (error) {
-      // Error handled by interceptor
       console.error("Login error:", error);
+      toast.error(error.response?.data?.message || "Login failed");
     } finally {
       setLoading(false);
     }
@@ -103,7 +108,7 @@ const Login = () => {
             <p className="text-center text-sm text-gray-600 mb-3">
               Don't have an account? Register as:
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <Link
                 to="/register/student"
                 className="px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium text-center"
@@ -122,12 +127,14 @@ const Login = () => {
               >
                 Alumni
               </Link>
-              <Link
-                to="/register/admin"
-                className="px-4 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium text-center"
-              >
-                Admin
-              </Link>
+              {/* Admin registration disabled for security reasons
+<Link
+  to="/register/admin"
+  className="px-4 py-2 bg-red-50 text-red-700 rounded-lg hover:bg-red-100 transition-colors text-sm font-medium text-center"
+>
+  Admin
+</Link>
+*/}
             </div>
           </div>
         </div>

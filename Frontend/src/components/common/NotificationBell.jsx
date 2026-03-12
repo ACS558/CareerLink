@@ -3,13 +3,14 @@ import { notificationAPI } from "../../services/api";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useNotifications } from "../../hooks/useNotifications";
+import toast from "react-hot-toast";
 
 const NotificationBell = () => {
   const navigate = useNavigate();
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Get everything from the hook
+  // ✅ REMOVE THE 30000 PARAMETER - No more polling!
   const {
     unreadCount,
     notifications,
@@ -17,13 +18,16 @@ const NotificationBell = () => {
     fetchNotifications,
     markAsRead,
     markAllAsRead,
-  } = useNotifications(30000); // Poll every 30 seconds
+  } = useNotifications(); // ✅ No polling interval!
 
   useEffect(() => {
     if (showDropdown && notifications.length === 0) {
       fetchNotifications({ limit: 10 });
     }
   }, [showDropdown]);
+
+  // ✅ NO NEED FOR SOCKET LISTENER HERE - Hook handles it!
+  // Remove the socket.on('new_notification') useEffect from here
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -36,16 +40,11 @@ const NotificationBell = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ UPDATED: Better notification click handler with navigation
   const handleNotificationClick = async (notification) => {
     try {
-      // Mark as read
       await markAsRead(notification._id);
-
-      // Close dropdown
       setShowDropdown(false);
 
-      // Navigate to actionUrl or default to notifications page
       if (notification.actionUrl) {
         navigate(notification.actionUrl);
       } else {
@@ -53,7 +52,6 @@ const NotificationBell = () => {
       }
     } catch (error) {
       console.error("Notification click error:", error);
-      // Still navigate even if mark as read fails
       if (notification.actionUrl) {
         navigate(notification.actionUrl);
       }
@@ -63,7 +61,6 @@ const NotificationBell = () => {
   const handleClearRead = async () => {
     try {
       await notificationAPI.clearRead();
-      // Refresh notifications after clearing
       fetchNotifications({ limit: 10 });
     } catch (error) {
       console.error("Clear read error:", error);
@@ -72,30 +69,24 @@ const NotificationBell = () => {
 
   const getNotificationIcon = (type) => {
     const icons = {
-      // Job notifications
       job_approved: "✅",
       job_rejected: "❌",
-
-      // Application notifications
+      new_job_posted: "🎯",
       application_received: "📝",
       application_shortlisted: "🎉",
+      application_pending: "📋",
       application_rejected: "📋",
       application_selected: "🎊",
-      application_status: "📬", // ✅ NEW
-
-      // Account notifications
+      application_status: "📬",
       recruiter_approved: "✅",
       recruiter_rejected: "❌",
       alumni_approved: "✅",
       alumni_rejected: "❌",
-
-      // Extension notifications
       extension_request: "📝",
       extension_approved: "✅",
       extension_rejected: "❌",
-
-      // Placement notifications
-      placement_offer: "🎉", // ✅ NEW
+      placement_offer: "🎉",
+      new_post: "📝",
     };
     return icons[type] || "🔔";
   };
@@ -129,7 +120,6 @@ const NotificationBell = () => {
             d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
           />
         </svg>
-        {/* Unread Badge */}
         {unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -140,7 +130,6 @@ const NotificationBell = () => {
       {/* Dropdown */}
       {showDropdown && (
         <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
-          {/* Header */}
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <h3 className="font-semibold text-gray-900">Notifications</h3>
             {unreadCount > 0 && (
@@ -153,7 +142,6 @@ const NotificationBell = () => {
             )}
           </div>
 
-          {/* Notifications List */}
           <div className="max-h-96 overflow-y-auto">
             {loading ? (
               <div className="flex justify-center py-8">
@@ -175,7 +163,6 @@ const NotificationBell = () => {
                     }`}
                   >
                     <div className="flex items-start space-x-3">
-                      {/* Icon */}
                       <div
                         className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center border ${getPriorityColor(notification.priority)}`}
                       >
@@ -184,7 +171,6 @@ const NotificationBell = () => {
                         </span>
                       </div>
 
-                      {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between">
                           <p
@@ -213,7 +199,6 @@ const NotificationBell = () => {
             )}
           </div>
 
-          {/* Footer */}
           {notifications.length > 0 && (
             <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between">
               <button

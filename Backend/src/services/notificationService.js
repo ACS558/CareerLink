@@ -1,18 +1,21 @@
 import Notification from "../models/Notification.js";
 
 // Create notification helper
-export const createNotification = async ({
-  userId,
-  userRole,
-  type,
-  title,
-  message,
-  relatedJob = null,
-  relatedApplication = null,
-  relatedUser = null,
-  actionUrl = null,
-  priority = "medium",
-}) => {
+export const createNotification = async (
+  {
+    userId,
+    userRole,
+    type,
+    title,
+    message,
+    relatedJob = null,
+    relatedApplication = null,
+    relatedUser = null,
+    actionUrl = null,
+    priority = "medium",
+  },
+  io = null,
+) => {
   try {
     const notification = await Notification.create({
       userId,
@@ -28,6 +31,37 @@ export const createNotification = async ({
     });
 
     console.log(`📬 Notification created for ${userRole} ${userId}: ${title}`);
+
+    // ✅ EMIT REAL-TIME NOTIFICATION VIA SOCKET
+    if (io) {
+      try {
+        // Get unread count
+        const unreadCount = await Notification.countDocuments({
+          userId,
+          isRead: false,
+        });
+
+        // Emit to user's room
+        io.to(userId.toString()).emit("new_notification", {
+          notification: {
+            _id: notification._id,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            priority: notification.priority,
+            actionUrl: notification.actionUrl,
+            createdAt: notification.createdAt,
+          },
+          unreadCount,
+        });
+
+        console.log(`🔔 Real-time notification sent to user ${userId}`);
+      } catch (socketError) {
+        console.error("Socket emit error:", socketError);
+        // Don't fail notification creation if socket fails
+      }
+    }
+
     return notification;
   } catch (error) {
     console.error("Create notification error:", error);
@@ -59,6 +93,13 @@ export const notificationTemplates = {
     priority: "high",
   }),
 
+  applicationPending: (jobTitle, companyName) => ({
+    type: "application_pending",
+    title: "📋 Application Under Review",
+    message: `Your application for ${jobTitle} at ${companyName} is being reviewed.`,
+    priority: "medium",
+  }),
+
   // Recruiter notifications
   jobApproved: (jobTitle) => ({
     type: "job_approved",
@@ -72,13 +113,6 @@ export const notificationTemplates = {
     title: "Job Posting Rejected ❌",
     message: `Your job posting "${jobTitle}" was rejected. Reason: ${reason}`,
     priority: "high",
-  }),
-
-  newApplication: (studentName, jobTitle) => ({
-    type: "application_received",
-    title: "New Application Received 📝",
-    message: `${studentName} has applied for ${jobTitle}.`,
-    priority: "medium",
   }),
 
   recruiterApproved: () => ({

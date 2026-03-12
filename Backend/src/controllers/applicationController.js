@@ -496,7 +496,7 @@ export const updateApplicationStatus = async (req, res) => {
     const { status } = req.body;
 
     // Validate status
-    if (!["shortlisted", "rejected", "selected", "on-hold"].includes(status)) {
+    if (!["shortlisted", "rejected", "selected", "pending"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status",
@@ -618,19 +618,19 @@ export const updateApplicationStatus = async (req, res) => {
             `✅ Student ${student.registrationNumber} marked as PLACED`,
           );
 
-          // Send notification
+          // ✅ Send placement notification
           try {
-            await createNotification({
-              userId: application.studentId.userId,
-              userRole: "student",
-              type: "application_selected",
-              title: "🎉 New Job Offer!",
-              message: `Congratulations! You've been selected for ${jobTitle} at ${companyName}. Check "My Placements" to manage your offer.`,
-              actionUrl: "/student/placements",
-              priority: "high",
-              relatedJob: job._id,
-              relatedApplication: application._id,
-            });
+            await createNotification(
+              {
+                userId: application.studentId.userId,
+                userRole: "student",
+                ...notificationTemplates.placementOffer(jobTitle, companyName),
+                actionUrl: "/student/placements",
+                relatedJob: job._id,
+                relatedApplication: application._id,
+              },
+              req.app.get("io"),
+            );
           } catch (notifError) {
             console.error("Placement notification error:", notifError);
           }
@@ -645,7 +645,7 @@ export const updateApplicationStatus = async (req, res) => {
       }
     }
 
-    // Notifications for status change
+    // ✅ NOTIFICATIONS FOR STATUS CHANGE
     const companyName =
       application.jobId.recruiterId?.companyInfo?.companyName || "Company";
     const jobTitle = application.jobId.title;
@@ -654,39 +654,62 @@ export const updateApplicationStatus = async (req, res) => {
     let notificationData;
     let actionUrl = "/student/applications";
 
-    if (status === "shortlisted") {
-      notificationData = notificationTemplates.applicationShortlisted(
-        jobTitle,
-        companyName,
-      );
-      actionUrl = "/student/applications";
-    } else if (status === "rejected") {
-      notificationData = notificationTemplates.applicationRejected(
-        jobTitle,
-        companyName,
-      );
-      actionUrl = "/student/applications";
-    } else if (status === "selected") {
-      notificationData = notificationTemplates.applicationSelected(
-        jobTitle,
-        companyName,
-      );
-      actionUrl = `/student/jobs/${application.jobId._id}`;
+    // ✅ DETERMINE NOTIFICATION BASED ON STATUS
+    switch (status) {
+      case "pending":
+        notificationData = notificationTemplates.applicationPending(
+          jobTitle,
+          companyName,
+        );
+        actionUrl = "/student/applications";
+        break;
+
+      case "shortlisted":
+        notificationData = notificationTemplates.applicationShortlisted(
+          jobTitle,
+          companyName,
+        );
+        actionUrl = "/student/applications";
+        break;
+
+      case "rejected":
+        notificationData = notificationTemplates.applicationRejected(
+          jobTitle,
+          companyName,
+        );
+        actionUrl = "/student/applications";
+        break;
+
+      case "selected":
+        notificationData = notificationTemplates.applicationSelected(
+          jobTitle,
+          companyName,
+        );
+        actionUrl = `/student/jobs/${application.jobId._id}`;
+        break;
     }
 
+    // ✅ SEND STATUS CHANGE NOTIFICATION
     if (notificationData && studentUserId) {
       try {
-        await createNotification({
-          userId: studentUserId,
-          userRole: "student",
-          type: notificationData.type,
-          title: notificationData.title,
-          message: notificationData.message,
-          priority: notificationData.priority || "high",
-          relatedJob: application.jobId._id,
-          relatedApplication: application._id,
-          actionUrl,
-        });
+        await createNotification(
+          {
+            userId: studentUserId,
+            userRole: "student",
+            type: notificationData.type,
+            title: notificationData.title,
+            message: notificationData.message,
+            priority: notificationData.priority || "high",
+            relatedJob: application.jobId._id,
+            relatedApplication: application._id,
+            actionUrl,
+          },
+          req.app.get("io"),
+        );
+
+        console.log(
+          `✅ Notification sent: Application ${oldStatus} → ${status}`,
+        );
       } catch (notifError) {
         console.error("Create notification error:", notifError);
       }
@@ -712,14 +735,18 @@ export const updateApplicationStatus = async (req, res) => {
 // @access  Private (Recruiter)
 export const bulkUpdateApplications = async (req, res) => {
   try {
-    const recruiterId = req.user.roleDoc._id;
     const { applicationIds, status } = req.body;
 
+    const recruiterId =
+      req.user.role === "recruiter" ? req.user.roleDoc._id.toString() : null;
+
     console.log("\n🔍 BULK UPDATE REQUEST:");
+    console.log("User Role:", req.user.role);
     console.log("Recruiter ID:", recruiterId);
     console.log("Application IDs:", applicationIds);
     console.log("Target Status:", status);
     console.log("");
+
     if (!applicationIds || applicationIds.length === 0) {
       return res.status(400).json({
         success: false,
@@ -727,23 +754,20 @@ export const bulkUpdateApplications = async (req, res) => {
       });
     }
 
-    if (!["shortlisted", "rejected", "on-hold", "selected"].includes(status)) {
+    if (!["shortlisted", "rejected", "pending", "selected"].includes(status)) {
       return res.status(400).json({
         success: false,
         message: "Invalid status for bulk update",
       });
     }
 
-    // ✅ FIXED CODE:
+    // ---------- FETCH APPLICATIONS ----------
     const applications = await Application.find({
       _id: { $in: applicationIds },
     })
       .populate({
         path: "jobId",
-        populate: {
-          path: "recruiterId",
-          select: "companyInfo",
-        },
+        populate: { path: "recruiterId", select: "companyInfo" },
       })
       .populate({
         path: "studentId",
@@ -751,34 +775,20 @@ export const bulkUpdateApplications = async (req, res) => {
           "userId personalInfo registrationNumber placements placementStatus",
       });
 
-    // ✅ BETTER AUTHORIZATION CHECK
+    // ---------- AUTHORIZATION ----------
     const unauthorizedApps = applications.filter((app) => {
-      if (!app.jobId || !app.jobId.recruiterId) {
-        console.error(
-          `Missing jobId or recruiterId for application ${app._id}`,
-        );
-        return true; // Treat missing data as unauthorized
-      }
+      if (req.user.role === "admin") return false;
+
+      if (!app.jobId || !app.jobId.recruiterId) return true;
 
       const jobRecruiterId = app.jobId.recruiterId._id
         ? app.jobId.recruiterId._id.toString()
         : app.jobId.recruiterId.toString();
 
-      const currentRecruiterId = recruiterId.toString();
-
-      console.log(
-        `Checking auth: Job recruiter: ${jobRecruiterId}, Current: ${currentRecruiterId}`,
-      );
-
-      return jobRecruiterId !== currentRecruiterId;
+      return jobRecruiterId !== recruiterId;
     });
 
     if (unauthorizedApps.length > 0) {
-      console.error(`❌ Unauthorized applications: ${unauthorizedApps.length}`);
-      console.error(
-        "Unauthorized app IDs:",
-        unauthorizedApps.map((a) => a._id),
-      );
       return res.status(403).json({
         success: false,
         message: `Not authorized to update ${unauthorizedApps.length} application(s)`,
@@ -789,7 +799,7 @@ export const bulkUpdateApplications = async (req, res) => {
       `✅ Authorization passed for ${applications.length} applications`,
     );
 
-    // Update all applications
+    // ---------- UPDATE APPLICATION STATUS ----------
     const updateData = { status };
 
     if (status === "shortlisted") {
@@ -803,69 +813,78 @@ export const bulkUpdateApplications = async (req, res) => {
 
     await Application.updateMany({ _id: { $in: applicationIds } }, updateData);
 
-    // ✅ ✅ ✅ SEND NOTIFICATIONS TO ALL STUDENTS ✅ ✅ ✅
+    // ---------- STATUS NOTIFICATIONS ----------
     let notificationsSent = 0;
 
-    for (const application of applications) {
-      try {
-        const companyName =
-          application.jobId.recruiterId?.companyInfo?.companyName || "Company";
-        const jobTitle = application.jobId.title;
-        const studentUserId = application.studentId.userId;
+    await Promise.all(
+      applications.map(async (application) => {
+        try {
+          const companyName =
+            application.jobId.recruiterId?.companyInfo?.companyName ||
+            "Company";
 
-        if (!studentUserId) continue;
+          const jobTitle = application.jobId.title;
+          const studentUserId = application.studentId.userId;
 
-        // Get notification data based on status
-        let notificationData;
-        let actionUrl = "/student/applications";
+          if (!studentUserId) return;
 
-        if (status === "shortlisted") {
-          notificationData = notificationTemplates.applicationShortlisted(
-            jobTitle,
-            companyName,
+          let notificationData;
+          let actionUrl = "/student/applications";
+
+          if (status === "shortlisted") {
+            notificationData = notificationTemplates.applicationShortlisted(
+              jobTitle,
+              companyName,
+            );
+          } else if (status === "rejected") {
+            notificationData = notificationTemplates.applicationRejected(
+              jobTitle,
+              companyName,
+            );
+          } else if (status === "selected") {
+            notificationData = notificationTemplates.applicationSelected(
+              jobTitle,
+              companyName,
+            );
+            actionUrl = `/student/jobs/${application.jobId._id}`;
+          } else if (status === "pending") {
+            notificationData = notificationTemplates.applicationPending(
+              jobTitle,
+              companyName,
+            );
+            actionUrl = "/student/applications";
+          }
+
+          if (notificationData) {
+            await createNotification(
+              {
+                userId: studentUserId,
+                userRole: "student",
+                type: notificationData.type,
+                title: notificationData.title,
+                message: notificationData.message,
+                priority: notificationData.priority || "high",
+                relatedJob: application.jobId._id,
+                relatedApplication: application._id,
+                actionUrl,
+              },
+              req.app.get("io"),
+            );
+
+            notificationsSent++;
+          }
+        } catch (err) {
+          console.error(
+            `Notification error for application ${application._id}`,
+            err,
           );
-          actionUrl = "/student/applications";
-        } else if (status === "rejected") {
-          notificationData = notificationTemplates.applicationRejected(
-            jobTitle,
-            companyName,
-          );
-          actionUrl = "/student/applications";
-        } else if (status === "selected") {
-          notificationData = notificationTemplates.applicationSelected(
-            jobTitle,
-            companyName,
-          );
-          actionUrl = `/student/jobs/${application.jobId._id}`;
         }
-
-        // Create notification
-        if (notificationData) {
-          await createNotification({
-            userId: studentUserId,
-            userRole: "student",
-            type: notificationData.type,
-            title: notificationData.title,
-            message: notificationData.message,
-            priority: notificationData.priority || "high",
-            relatedJob: application.jobId._id,
-            relatedApplication: application._id,
-            actionUrl,
-          });
-          notificationsSent++;
-        }
-      } catch (notifError) {
-        console.error(
-          `Notification error for application ${application._id}:`,
-          notifError,
-        );
-        // Continue with other notifications
-      }
-    }
+      }),
+    );
 
     console.log(`✅ Bulk update: ${notificationsSent} notifications sent`);
 
-    // ✅ AUTO-CREATE PLACEMENTS - ONLY CHECK BY APPLICATION ID
+    // ---------- AUTO PLACEMENT CREATION ----------
     if (status === "selected") {
       let placementsCreated = 0;
       let placementsSkipped = 0;
@@ -877,24 +896,25 @@ export const bulkUpdateApplications = async (req, res) => {
 
       for (const application of applications) {
         try {
-          const student = await Student.findById(application.studentId._id);
+          // ⚡ optimization: no extra DB call
+          const student = application.studentId;
 
           if (!student) {
-            console.error(`❌ Student not found: ${application.studentId._id}`);
             placementsFailed++;
             continue;
           }
 
           const job = application.jobId;
+
           const companyName =
             job.company ||
             job.recruiterId?.companyInfo?.companyName ||
             "Company";
+
           const jobTitle = job.title || job.role || "";
           const packageAmount =
             job.package || job.salary || job.salaryRange?.max || 0;
 
-          // ✅ ONLY CHECK BY APPLICATION ID
           const existingPlacement = student.placements?.find(
             (p) =>
               p.metadata?.applicationId?.toString() ===
@@ -902,17 +922,9 @@ export const bulkUpdateApplications = async (req, res) => {
           );
 
           if (existingPlacement) {
-            console.log(
-              `ℹ️ Placement already exists for ${student.registrationNumber} (appId: ${application._id})`,
-            );
             placementsSkipped++;
             continue;
           }
-
-          // ✅ CREATE NEW PLACEMENT
-          console.log(
-            `🎯 Creating placement for ${student.registrationNumber} at ${companyName} (${jobTitle})`,
-          );
 
           const updateResult = await Student.updateOne(
             { _id: student._id },
@@ -941,12 +953,11 @@ export const bulkUpdateApplications = async (req, res) => {
 
           if (updateResult.modifiedCount > 0) {
             placementsCreated++;
-            console.log(`✅ ${student.registrationNumber} marked as PLACED`);
 
-            // Send placement notification
-            try {
-              await createNotification({
-                userId: application.studentId.userId,
+            // ---------- PLACEMENT NOTIFICATION ----------
+            await createNotification(
+              {
+                userId: student.userId,
                 userRole: "student",
                 type: "placement_offer",
                 title: "🎉 New Job Offer!",
@@ -955,31 +966,26 @@ export const bulkUpdateApplications = async (req, res) => {
                 priority: "high",
                 relatedJob: job._id,
                 relatedApplication: application._id,
-              });
-            } catch (notifError) {
-              console.error("Placement notification error:", notifError);
-            }
-          } else {
-            console.warn(
-              `⚠️ Update did not modify ${student.registrationNumber}`,
+              },
+              req.app.get("io"),
             );
+          } else {
             placementsFailed++;
           }
-        } catch (placementError) {
+        } catch (err) {
           console.error(
-            `❌ Bulk placement error for application ${application._id}:`,
-            placementError,
+            `❌ Bulk placement error for application ${application._id}`,
+            err,
           );
-          console.error("Stack:", placementError.stack);
           placementsFailed++;
         }
       }
 
       console.log(`\n📊 Bulk Placement Summary:`);
       console.log(`   ✅ Created: ${placementsCreated}`);
-      console.log(`   ℹ️ Skipped (already exists): ${placementsSkipped}`);
+      console.log(`   ℹ️ Skipped: ${placementsSkipped}`);
       console.log(`   ❌ Failed: ${placementsFailed}`);
-      console.log(`   📝 Total processed: ${applications.length}\n`);
+      console.log(`   📝 Total: ${applications.length}\n`);
     }
 
     res.json({
@@ -989,6 +995,7 @@ export const bulkUpdateApplications = async (req, res) => {
     });
   } catch (error) {
     console.error("Bulk update applications error:", error);
+
     res.status(500).json({
       success: false,
       message: "Failed to update applications",
@@ -1330,12 +1337,15 @@ export const autoShortlistByATS = async (req, res) => {
               );
             }
 
-            await createNotification({
-              userId: app.studentId.userId,
-              userRole: "student",
-              ...notificationData,
-              actionUrl: "/student/applications",
-            });
+            await createNotification(
+              {
+                userId: app.studentId.userId,
+                userRole: "student",
+                ...notificationData,
+                actionUrl: "/student/applications",
+              },
+              req.app.get("io"),
+            );
           } catch (notifError) {
             console.error("Notification error:", notifError);
           }

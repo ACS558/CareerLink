@@ -496,7 +496,7 @@ export const getAdvancedAnalytics = async (req, res) => {
     // Get all applications with filters
     let applicationQuery = Application.find(dateFilter)
       .populate("studentId", "personalInfo academicInfo registrationNumber")
-      .populate("jobId", "title recruiterId")
+      .populate("jobId", "title recruiterId company")
       .populate({
         path: "jobId",
         populate: {
@@ -518,7 +518,9 @@ export const getAdvancedAnalytics = async (req, res) => {
     // Filter by company if specified
     if (company) {
       filteredApplications = filteredApplications.filter(
-        (app) => app.jobId?.recruiterId?.companyInfo?.companyName === company,
+        (app) =>
+          app.jobId?.recruiterId?.companyInfo?.companyName === company ||
+          app.jobId?.company === company,
       );
     }
 
@@ -573,7 +575,9 @@ export const getAdvancedAnalytics = async (req, res) => {
     const companyWiseStats = {};
     filteredApplications.forEach((app) => {
       const company =
-        app.jobId?.recruiterId?.companyInfo?.companyName || "Unknown";
+        app.jobId?.recruiterId?.companyInfo?.companyName ||
+        app.jobId?.company ||
+        "Unknown";
       if (!companyWiseStats[company]) {
         companyWiseStats[company] = {
           total: 0,
@@ -680,17 +684,21 @@ export const getAdvancedAnalytics = async (req, res) => {
 };
 
 // ============================================
-// EXPORT DATA
+// EXPORT DATA (✅ UPDATED WITH FILTERS)
 // ============================================
 
 export const exportData = async (req, res) => {
   try {
-    const { type, format } = req.query; // type: students, applications, jobs
+    const { type, format, branch, company } = req.query; // ✅ ADDED branch and company
 
     let data = [];
 
     if (type === "students") {
-      const students = await Student.find()
+      // ✅ BUILD FILTER FOR STUDENTS
+      const filter = {};
+      if (branch) filter["academicInfo.branch"] = branch;
+
+      const students = await Student.find(filter)
         .populate("userId", "email")
         .select(
           "registrationNumber personalInfo academicInfo placementStatus package",
@@ -706,9 +714,29 @@ export const exportData = async (req, res) => {
         "Package (LPA)": s.package || "",
       }));
     } else if (type === "applications") {
-      const applications = await Application.find()
+      // ✅ BUILD FILTER FOR APPLICATIONS
+      const filter = {};
+
+      if (branch) {
+        const studentsInBranch = await Student.find({
+          "academicInfo.branch": branch,
+        }).select("_id");
+        filter.studentId = { $in: studentsInBranch.map((s) => s._id) };
+      }
+
+      if (company) {
+        const jobsFromCompany = await Job.find({
+          $or: [
+            { company: company },
+            { "recruiterId.companyInfo.companyName": company },
+          ],
+        }).select("_id");
+        filter.jobId = { $in: jobsFromCompany.map((j) => j._id) };
+      }
+
+      const applications = await Application.find(filter)
         .populate("studentId", "registrationNumber personalInfo academicInfo")
-        .populate("jobId", "title")
+        .populate("jobId", "title company")
         .populate({
           path: "jobId",
           populate: { path: "recruiterId", select: "companyInfo" },
@@ -721,27 +749,41 @@ export const exportData = async (req, res) => {
         Branch: app.studentId?.academicInfo?.branch || "",
         CGPA: app.studentId?.academicInfo?.cgpa || "",
         "Job Title": app.jobId?.title || "",
-        Company: app.jobId?.recruiterId?.companyInfo?.companyName || "",
+        Company:
+          app.jobId?.company ||
+          app.jobId?.recruiterId?.companyInfo?.companyName ||
+          "",
         Status: app.status,
         "ATS Score": app.atsScore?.score || "",
         "Applied Date": app.appliedAt?.toISOString().split("T")[0] || "",
       }));
     } else if (type === "jobs") {
-      const jobs = await Job.find().populate("recruiterId", "companyInfo");
+      // ✅ BUILD FILTER FOR JOBS
+      const filter = {};
+      if (company) {
+        filter.$or = [
+          { company: company },
+          { "recruiterId.companyInfo.companyName": company },
+        ];
+      }
+
+      const jobs = await Job.find(filter).populate(
+        "recruiterId",
+        "companyInfo",
+      );
 
       data = jobs.map((job) => ({
         "Job Title": job.title,
-        Company: job.recruiterId?.companyInfo?.companyName || "",
+        Company: job.company || job.recruiterId?.companyInfo?.companyName || "",
         Location: job.location || "",
         Type: job.jobType || "",
         "Salary Range": `${job.salaryRange?.min || ""}-${job.salaryRange?.max || ""} ${job.salaryType || ""}`,
         Status: job.approvalStatus,
-        Applications: 0, // Can be populated from Application count
         "Posted Date": job.createdAt?.toISOString().split("T")[0] || "",
       }));
     }
 
-    // For now, return JSON (Excel/PDF export can be added later)
+    // Return JSON (frontend will convert to CSV)
     res.json({
       success: true,
       data,

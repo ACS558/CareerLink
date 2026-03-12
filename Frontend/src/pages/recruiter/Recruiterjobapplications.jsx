@@ -878,7 +878,18 @@ const RecruiterJobApplications = () => {
                         <button
                           onClick={() => {
                             setSelectedApp(app);
-                            setNewStatus(app.status);
+                            // ✅ Fallback to "pending" if status is invalid
+                            const validStatuses = [
+                              "pending",
+                              "shortlisted",
+                              "selected",
+                              "rejected",
+                            ];
+                            setNewStatus(
+                              validStatuses.includes(app.status)
+                                ? app.status
+                                : "pending",
+                            );
                             setShowStatusModal(true);
                           }}
                           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-semibold ml-4"
@@ -920,6 +931,7 @@ const RecruiterJobApplications = () => {
                     onChange={(e) => setNewStatus(e.target.value)}
                     className="w-full border-2 border-gray-200 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
+                    <option value="applied">Applied</option>
                     <option value="pending">Pending</option>
                     <option value="shortlisted">Shortlisted</option>
                     <option value="selected">Selected</option>
@@ -1098,6 +1110,7 @@ const RecruiterJobApplications = () => {
                           onChange={(e) => setBulkTargetStatus(e.target.value)}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
+                          <option value="applied">Applied</option>
                           <option value="pending">Pending</option>
                           <option value="shortlisted">Shortlisted</option>
                           <option value="selected">Selected</option>

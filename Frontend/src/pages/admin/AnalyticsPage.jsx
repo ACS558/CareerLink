@@ -23,6 +23,7 @@ import {
 const AnalyticsPage = () => {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
     startDate: "",
     endDate: "",
@@ -36,6 +37,8 @@ const AnalyticsPage = () => {
     "EEE",
     "MECH",
     "CIVIL",
+    "AIDS",
+    "AIML",
   ]);
   const [companies, setCompanies] = useState([]);
 
@@ -66,11 +69,13 @@ const AnalyticsPage = () => {
 
   const fetchCompanies = async () => {
     try {
-      const response = await api.get("/admin/recruiters");
-      if (response.data.success) {
-        const companyList = response.data.recruiters
-          .map((r) => r.companyInfo?.companyName)
-          .filter(Boolean);
+      // ✅ IMPROVED: Get companies from analytics data
+      const response = await api.get("/analytics/admin/advanced");
+
+      if (response.data.success && response.data.analytics?.companyWise) {
+        const companyList = response.data.analytics.companyWise
+          .map((c) => c.company)
+          .filter((c) => c && c !== "Unknown");
         setCompanies([...new Set(companyList)]);
       }
     } catch (error) {
@@ -101,9 +106,17 @@ const AnalyticsPage = () => {
 
   const handleExport = async (type) => {
     try {
-      const response = await api.get("/analytics/admin/export", {
-        params: { type, format: "json" },
-      });
+      setExporting(true);
+
+      // ✅ PASS FILTERS TO EXPORT
+      const params = {
+        type,
+        format: "json",
+        branch: filters.branch || undefined,
+        company: filters.company || undefined,
+      };
+
+      const response = await api.get("/analytics/admin/export", { params });
 
       if (response.data.success) {
         // Convert to CSV
@@ -121,17 +134,28 @@ const AnalyticsPage = () => {
           ),
         ].join("\n");
 
+        // ✅ FILENAME WITH FILTERS
+        const timestamp = new Date().toISOString().split("T")[0];
+        const branchSuffix = filters.branch ? `_${filters.branch}` : "";
+        const companySuffix = filters.company
+          ? `_${filters.company.replace(/\s+/g, "_")}`
+          : "";
+
+        const filename = `${type}${branchSuffix}${companySuffix}_${timestamp}.csv`;
+
         // Download
         const blob = new Blob([csv], { type: "text/csv" });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${type}_export_${new Date().toISOString().split("T")[0]}.csv`;
+        a.download = filename;
         a.click();
       }
     } catch (error) {
       console.error("Error exporting data:", error);
       alert("Failed to export data");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -168,13 +192,13 @@ const AnalyticsPage = () => {
               <div className="flex gap-3">
                 <button
                   onClick={handleResetFilters}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition font-semibold"
                 >
                   Reset
                 </button>
                 <button
                   onClick={handleApplyFilters}
-                  className="px-4 py-2 text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition"
+                  className="px-4 py-2 text-white bg-purple-600 rounded-lg hover:bg-purple-700 transition font-semibold"
                 >
                   Apply Filters
                 </button>
@@ -252,6 +276,50 @@ const AnalyticsPage = () => {
             </div>
           </div>
 
+          {/* ✅ NEW: Active Filters Indicator */}
+          {(filters.branch ||
+            filters.company ||
+            filters.startDate ||
+            filters.endDate) && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-blue-800 font-semibold mb-2">
+                    📊 Active Filters:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {filters.branch && (
+                      <span className="px-3 py-1 bg-blue-600 text-white rounded-full text-xs font-semibold">
+                        Branch: {filters.branch}
+                      </span>
+                    )}
+                    {filters.company && (
+                      <span className="px-3 py-1 bg-green-600 text-white rounded-full text-xs font-semibold">
+                        Company: {filters.company}
+                      </span>
+                    )}
+                    {filters.startDate && (
+                      <span className="px-3 py-1 bg-orange-600 text-white rounded-full text-xs font-semibold">
+                        From: {filters.startDate}
+                      </span>
+                    )}
+                    {filters.endDate && (
+                      <span className="px-3 py-1 bg-purple-600 text-white rounded-full text-xs font-semibold">
+                        To: {filters.endDate}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button
+                  onClick={handleResetFilters}
+                  className="text-sm text-blue-600 hover:text-blue-800 font-semibold"
+                >
+                  Clear All
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Export Buttons */}
           <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200 mb-8">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -260,7 +328,8 @@ const AnalyticsPage = () => {
             <div className="flex gap-4">
               <button
                 onClick={() => handleExport("students")}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+                disabled={exporting}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-semibold flex items-center gap-2"
               >
                 <svg
                   className="w-5 h-5"
@@ -275,11 +344,12 @@ const AnalyticsPage = () => {
                     d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                   />
                 </svg>
-                Export Students
+                <span>{exporting ? "Exporting..." : "Export Students"}</span>
               </button>
               <button
                 onClick={() => handleExport("applications")}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                disabled={exporting}
+                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 font-semibold flex items-center gap-2"
               >
                 <svg
                   className="w-5 h-5"
@@ -294,11 +364,14 @@ const AnalyticsPage = () => {
                     d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                   />
                 </svg>
-                Export Applications
+                <span>
+                  {exporting ? "Exporting..." : "Export Applications"}
+                </span>
               </button>
               <button
                 onClick={() => handleExport("jobs")}
-                className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition flex items-center gap-2"
+                disabled={exporting}
+                className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition disabled:opacity-50 font-semibold flex items-center gap-2"
               >
                 <svg
                   className="w-5 h-5"
@@ -313,7 +386,7 @@ const AnalyticsPage = () => {
                     d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                   />
                 </svg>
-                Export Jobs
+                <span>{exporting ? "Exporting..." : "Export Jobs"}</span>
               </button>
             </div>
           </div>

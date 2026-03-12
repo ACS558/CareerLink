@@ -192,63 +192,15 @@ export const registerRecruiter = async (req, res) => {
 // @desc    Register Admin
 // @route   POST /api/auth/register/admin
 // @access  Public (should be protected in production)
+// @desc    Register Admin
+// @route   POST /api/auth/register/admin
+// @access  Disabled
 export const registerAdmin = async (req, res) => {
-  try {
-    const { email, password, name, department } = req.body;
-
-    // Validation
-    if (!email || !password || !name) {
-      return res.status(400).json({
-        message: "Please provide all required fields",
-      });
-    }
-
-    // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({
-        message: "User already exists with this email",
-      });
-    }
-
-    // Create User (active immediately for admin)
-    const user = await User.create({
-      email,
-      password,
-      role: "admin",
-      isVerified: true,
-      isActive: true,
-    });
-
-    // Create Admin profile
-    const admin = await Admin.create({
-      userId: user._id,
-      personalInfo: {
-        name,
-        department: department || "Training & Placement Cell",
-      },
-    });
-
-    // Generate token
-    const token = generateToken(user._id, user.role);
-
-    res.status(201).json({
-      message: "Admin registered successfully",
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        role: user.role,
-        name: admin.personalInfo.name,
-      },
-    });
-  } catch (error) {
-    console.error("Register Admin Error:", error);
-    res.status(500).json({
-      message: "Server error during registration",
-      error: error.message,
-    });
-  }
+  return res.status(403).json({
+    success: false,
+    message:
+      "Admin registration is disabled. Admin accounts are created manually by the system administrator.",
+  });
 };
 
 // @desc    Register Alumni
