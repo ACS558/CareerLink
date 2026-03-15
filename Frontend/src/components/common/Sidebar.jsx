@@ -5,13 +5,14 @@ const Sidebar = () => {
   const { user } = useAuth();
   const location = useLocation();
 
-  const getMenuItems = (role) => {
+  const getMenuItems = (role, roleLevel) => {
     const menus = {
       student: [
         { path: "/student/dashboard", label: "Dashboard", icon: "📊" },
         { path: "/student/feed", label: "Feed", icon: "📰" },
         { path: "/student/profile", label: "My Profile", icon: "👤" },
         { path: "/student/jobs", label: "Browse Jobs", icon: "💼" },
+        { path: "/student/referrals", label: "Browse Referrals", icon: "📌" },
         { path: "/student/applications", label: "My Applications", icon: "📝" },
         { path: "/student/placements", label: "My Placements", icon: "🏆" },
         { path: "/notifications", label: "Notifications", icon: "🔔" },
@@ -39,6 +40,13 @@ const Sidebar = () => {
         { path: "/admin/alumni", label: "All Alumni", icon: "🎓" },
         { path: "/admin/jobs", label: "All Jobs", icon: "💼" },
         { path: "/admin/jobs/pending", label: "Pending Jobs", icon: "⏳" },
+        {
+          path: "/admin/referrals/pending",
+          label: "Pending Referrals",
+          icon: "📌",
+        },
+        { path: "/admin/referrals", label: "All Referrals", icon: "📎" },
+
         { path: "/admin/applications", label: "All Applications", icon: "📝" },
         {
           path: "/admin/extension-requests",
@@ -46,6 +54,15 @@ const Sidebar = () => {
           icon: "⏰",
         },
         { path: "/admin/analytics", label: "Analytics", icon: "📈" },
+        ...(roleLevel === "super_admin"
+          ? [
+              {
+                path: "/admin/admin-management",
+                label: "Admin Management",
+                icon: "🛠️",
+              },
+            ]
+          : []),
         { path: "/notifications", label: "Notifications", icon: "🔔" },
       ],
       alumni: [
@@ -60,7 +77,7 @@ const Sidebar = () => {
     return menus[role] || [];
   };
 
-  const menuItems = getMenuItems(user?.role);
+  const menuItems = getMenuItems(user?.role, user?.roleLevel);
 
   const isActive = (path) => {
     return location.pathname === path;

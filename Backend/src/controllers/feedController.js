@@ -7,6 +7,10 @@ import Alumni from "../models/Alumni.js";
 import Job from "../models/Job.js";
 import cloudinary from "../config/cloudinary.js";
 import fs from "fs";
+import {
+  createBulkNotifications,
+  notificationTemplates,
+} from "../services/notificationService.js";
 
 // Helper function to clean up temp files
 const cleanupTempFiles = (files) => {
@@ -26,7 +30,7 @@ const cleanupTempFiles = (files) => {
 };
 
 // ============================================
-// CREATE POST (Updated for Multer)
+// CREATE POST (Updated for Multer + Notifications)
 // ============================================
 export const createPost = async (req, res) => {
   try {
@@ -83,12 +87,15 @@ export const createPost = async (req, res) => {
 
     // Determine author name and photo
     let authorName,
-      authorPhoto = null;
+      authorPhoto = null,
+      companyName = null;
+
     if (userRole === "admin") {
       authorName = authorInfo.personalInfo?.name || "Admin";
       authorPhoto = authorInfo.photo?.url;
     } else if (userRole === "recruiter") {
       authorName = authorInfo.companyInfo?.companyName || "Recruiter";
+      companyName = authorInfo.companyInfo?.companyName || "Company";
       authorPhoto = authorInfo.companyInfo?.logo?.url;
     } else if (userRole === "alumni") {
       authorName =
@@ -215,6 +222,114 @@ export const createPost = async (req, res) => {
       pinnedBy: canPinDirectly ? userId : null,
       pinnedAt: canPinDirectly ? new Date() : null,
     });
+
+    // ✅ SEND NOTIFICATIONS TO STUDENTS AND ADMINS
+    try {
+      // Get Socket.IO instance
+      const io = req.app.get("io");
+
+      const allNotifications = [];
+
+      // ✅ 1. NOTIFY ALL ACTIVE STUDENTS (for all post types)
+      const activeStudents = await Student.find()
+        .populate("userId", "_id isActive")
+        .select("userId");
+
+      const filteredStudents = activeStudents.filter(
+        (s) => s.userId && s.userId.isActive,
+      );
+
+      if (filteredStudents.length > 0) {
+        let studentTemplate;
+
+        if (userRole === "admin") {
+          studentTemplate = notificationTemplates.newPostFromAdmin(textContent);
+        } else if (userRole === "recruiter") {
+          studentTemplate = notificationTemplates.newPostFromRecruiter(
+            companyName,
+            textContent,
+          );
+        } else if (userRole === "alumni") {
+          studentTemplate = notificationTemplates.newPostFromAlumni(
+            authorName,
+            textContent,
+          );
+        }
+
+        if (studentTemplate) {
+          const studentNotifications = filteredStudents.map((student) => ({
+            userId: student.userId._id,
+            userRole: "student",
+            type: studentTemplate.type,
+            title: studentTemplate.title,
+            message: studentTemplate.message,
+            priority: studentTemplate.priority,
+            actionUrl: "/student/feed",
+          }));
+
+          allNotifications.push(...studentNotifications);
+        }
+      }
+
+      // ✅ 2. NOTIFY ALL ACTIVE ADMINS (only for recruiter/alumni posts)
+      if (userRole === "recruiter" || userRole === "alumni") {
+        const activeAdmins = await Admin.find()
+          .populate("userId", "_id isActive")
+          .select("userId");
+
+        const filteredAdmins = activeAdmins.filter(
+          (admin) => admin.userId?.isActive,
+        );
+
+        if (filteredAdmins.length > 0) {
+          let adminTemplate;
+
+          if (userRole === "recruiter") {
+            adminTemplate = notificationTemplates.newPostFromRecruiterToAdmin(
+              companyName,
+              textContent,
+            );
+          } else if (userRole === "alumni") {
+            adminTemplate = notificationTemplates.newPostFromAlumniToAdmin(
+              authorName,
+              textContent,
+            );
+          }
+
+          if (adminTemplate) {
+            const adminNotifications = filteredAdmins.map((admin) => ({
+              userId: admin.userId,
+              userRole: "admin",
+              type: adminTemplate.type,
+              title: adminTemplate.title,
+              message: adminTemplate.message,
+              priority: adminTemplate.priority,
+              actionUrl: "/admin/feed",
+            }));
+
+            allNotifications.push(...adminNotifications);
+          }
+        }
+      }
+
+      // Send all notifications in bulk
+      if (allNotifications.length > 0) {
+        await createBulkNotifications(allNotifications, io);
+
+        const studentCount = activeStudents.length;
+        const adminCount =
+          userRole === "recruiter" || userRole === "alumni"
+            ? allNotifications.length - studentCount
+            : 0;
+
+        console.log(
+          `✅ Sent post notifications: ${studentCount} students${adminCount > 0 ? `, ${adminCount} admins` : ""}`,
+        );
+      }
+    } catch (notificationError) {
+      console.error("Feed post notification error:", notificationError);
+      // Don't fail the post creation if notifications fail
+    }
 
     res.status(201).json({
       success: true,

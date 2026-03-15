@@ -18,8 +18,12 @@ const notificationSchema = new mongoose.Schema(
     type: {
       type: String,
       enum: [
+        "new_post",
+        "new_post_admin",
         "new_job_posted",
         "new_job_pending",
+        "new_alumni_registration",
+        "new_recruiter_registration",
         "job_approved",
         "job_rejected",
         "application_received",
@@ -35,6 +39,10 @@ const notificationSchema = new mongoose.Schema(
         "extension_request",
         "extension_approved",
         "extension_rejected",
+        "new_referral_pending",
+        "referral_approved",
+        "referral_rejected",
+        "new_referral_posted",
       ],
       required: true,
     },

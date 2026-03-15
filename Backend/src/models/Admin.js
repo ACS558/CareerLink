@@ -8,6 +8,11 @@ const adminSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    roleLevel: {
+      type: String,
+      enum: ["super_admin", "admin"],
+      default: "admin",
+    },
     personalInfo: {
       name: {
         type: String,

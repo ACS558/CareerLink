@@ -87,6 +87,13 @@ const NotificationBell = () => {
       extension_rejected: "❌",
       placement_offer: "🎉",
       new_post: "📝",
+      new_post_admin: "📝",
+      new_recruiter_registration: "🏢",
+      new_alumni_registration: "🎓",
+      new_referral_pending: "📌",
+      referral_approved: "🎉",
+      referral_rejected: "❌",
+      new_referral_posted: "🎯",
     };
     return icons[type] || "🔔";
   };

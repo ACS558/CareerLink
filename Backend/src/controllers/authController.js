@@ -4,6 +4,8 @@ import Recruiter from "../models/Recruiter.js";
 import Admin from "../models/Admin.js";
 import Alumni from "../models/Alumni.js";
 import jwt from "jsonwebtoken";
+import { createNotification } from "../services/notificationService.js";
+import { getIO } from "../socket/socketServer.js";
 
 // Generate JWT Token
 const generateToken = (userId, role) => {
@@ -165,6 +167,33 @@ export const registerRecruiter = async (req, res) => {
       verificationStatus: "pending",
     });
 
+    // 🔔 Notify all admins about new recruiter registration
+    try {
+      const admins = await Admin.find();
+
+      const io = getIO();
+
+      for (const admin of admins) {
+        await createNotification(
+          {
+            userId: admin.userId,
+            userRole: "admin",
+            type: "new_recruiter_registration",
+            title: "🏢 New Recruiter Registration",
+            message: `${companyName} has registered and is awaiting approval.`,
+            relatedUser: user._id,
+            actionUrl: "/admin/recruiters/pending",
+            priority: "high",
+          },
+          io,
+        );
+      }
+
+      console.log(`📢 Notified ${admins.length} admins about new recruiter`);
+    } catch (error) {
+      console.error("Admin notification error:", error);
+    }
+
     // Generate token (limited access)
     const token = generateToken(user._id, user.role);
 
@@ -286,6 +315,33 @@ export const registerAlumni = async (req, res) => {
       verificationStatus: "pending",
     });
 
+    // 🔔 Notify admins about new alumni registration
+    try {
+      const admins = await Admin.find();
+
+      const io = getIO();
+
+      for (const admin of admins) {
+        await createNotification(
+          {
+            userId: admin.userId,
+            userRole: "admin",
+            type: "new_alumni_registration",
+            title: "🎓 New Alumni Registration",
+            message: `${name} (${registrationNumber}) registered and is awaiting verification.`,
+            relatedUser: user._id,
+            actionUrl: "/admin/alumni/pending",
+            priority: "high",
+          },
+          io,
+        );
+      }
+
+      console.log(`📢 Notified ${admins.length} admins about new alumni`);
+    } catch (error) {
+      console.error("Admin notification error:", error);
+    }
+
     // Generate token
     const token = generateToken(user._id, user.role);
 
@@ -375,17 +431,29 @@ export const login = async (req, res) => {
         message: "Account is not verified yet. Please wait for admin approval.",
       });
     }
+    // Save previous login time
+    const previousLogin = user.lastLogin;
 
+    // Update last login
+    user.lastLogin = new Date();
+    await user.save();
     // Generate token
     const token = generateToken(user._id, user.role);
+    let roleLevel = null;
 
+    if (user.role === "admin") {
+      const admin = await Admin.findOne({ userId: user._id });
+      roleLevel = admin?.roleLevel || "admin";
+    }
     res.json({
       message: "Login successful",
       token,
+      lastLogin: previousLogin,
       user: {
         id: user._id,
         email: user.email,
         role: user.role,
+        roleLevel: roleLevel, // ← important
       },
     });
   } catch (error) {

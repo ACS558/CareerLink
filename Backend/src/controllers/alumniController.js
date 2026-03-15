@@ -1,10 +1,13 @@
 import Alumni from "../models/Alumni.js";
-import User from "../models/User.js";
 import {
   calculateAlumniProfileCompletion,
   validatePhone,
   validateURL,
 } from "../utils/profileHelpers.js";
+import Referral from "../models/Referral.js";
+import Admin from "../models/Admin.js";
+
+import { createBulkNotifications } from "../services/notificationService.js";
 
 // @desc    Get alumni profile
 // @route   GET /api/alumni/profile
@@ -147,6 +150,96 @@ export const updateAlumniProfile = async (req, res) => {
     res.status(500).json({
       message: "Server error",
       error: error.message,
+    });
+  }
+};
+export const createReferral = async (req, res) => {
+  try {
+    const alumniId = req.user.roleDoc._id;
+
+    const referral = await Referral.create({
+      ...req.body,
+      alumniId,
+      approvalStatus: "pending",
+    });
+
+    // ✅ Notify admins
+    try {
+      const admins = await Admin.find().select("userId");
+
+      const io = req.app.get("io");
+
+      const notifications = admins.map((admin) => ({
+        userId: admin.userId,
+        userRole: "admin",
+        type: "new_referral_pending",
+        title: "📌 New Referral Pending Approval",
+        message: `${req.body.company} referral posted by alumni`,
+        relatedUser: alumniId,
+        actionUrl: `/admin/referrals/pending`,
+        priority: "high",
+      }));
+
+      await createBulkNotifications(notifications, io);
+    } catch (err) {
+      console.error("Referral admin notification error:", err);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Referral submitted for admin approval",
+      referral,
+    });
+  } catch (error) {
+    console.error("Create referral error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create referral",
+    });
+  }
+};
+export const getMyReferrals = async (req, res) => {
+  try {
+    const alumniId = req.user.roleDoc._id;
+
+    const referrals = await Referral.find({ alumniId }).sort({
+      createdAt: -1,
+    });
+
+    res.json({
+      success: true,
+      referrals,
+    });
+  } catch (error) {
+    console.error("Get referrals error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch referrals",
+    });
+  }
+};
+export const deleteReferral = async (req, res) => {
+  try {
+    const referral = await Referral.findById(req.params.id);
+
+    if (!referral) {
+      return res.status(404).json({
+        success: false,
+        message: "Referral not found",
+      });
+    }
+
+    await referral.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Referral deleted",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete referral",
     });
   }
 };

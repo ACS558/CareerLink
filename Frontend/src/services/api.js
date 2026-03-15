@@ -26,31 +26,46 @@ api.interceptors.request.use(
 );
 
 // Response interceptor - Handle errors globally
+let isRedirectingToLogin = false;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response) {
-      // Token expired or invalid
-      if (error.response.status === 401) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        window.location.href = "/login";
-        toast.error("Session expired. Please login again.");
-      }
-      // Forbidden
-      else if (error.response.status === 403) {
-        toast.error(error.response.data.message || "Access denied");
-      }
-      // Other errors
-      else {
-        const message = error.response.data.message || "Something went wrong";
-        toast.error(message);
-      }
-    } else if (error.request) {
+    if (!error.response) {
       toast.error("Network error. Please check your connection.");
-    } else {
-      toast.error("An error occurred. Please try again.");
+      return Promise.reject(error);
     }
+
+    const { status } = error.response;
+    const requestUrl = error.config?.url || "";
+
+    // Skip auth endpoints (login/register)
+    const isAuthRequest =
+      requestUrl.includes("/auth/login") ||
+      requestUrl.includes("/auth/register");
+
+    // Handle expired token safely
+    if (status === 401 && !isAuthRequest) {
+      if (!isRedirectingToLogin) {
+        isRedirectingToLogin = true;
+
+        localStorage.removeItem("token");
+        localStorage.removeItem("role");
+        localStorage.removeItem("email");
+
+        toast.error("Session expired. Please login again.");
+
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+      }
+    } else if (status === 403) {
+      toast.error(error.response.data.message || "Access denied");
+    } else {
+      const message = error.response.data?.message || "Something went wrong";
+      toast.error(message);
+    }
+
     return Promise.reject(error);
   },
 );
@@ -91,6 +106,7 @@ export const studentAPI = {
 
   // Placements
   getPlacements: () => api.get("/student/placements"),
+  getReferrals: () => api.get("/student/referrals"),
 };
 
 // ============ RECRUITER APIs ============
@@ -165,6 +181,18 @@ export const adminAPI = {
     }),
   bulkUpdateApplications: (data) =>
     api.patch("/admin/applications/bulk-update", data),
+
+  createAdmin: (data) => api.post("/admin/admins", data),
+
+  getAllAdmins: () => api.get("/admin/admins"),
+
+  deleteAdmin: (id) => api.delete(`/admin/admins/${id}`),
+  getPendingReferrals: () => api.get("/admin/referrals/pending"),
+
+  getAllReferrals: () => api.get("/admin/referrals"),
+
+  verifyReferral: (id, action) =>
+    api.put(`/admin/referrals/${id}/verify`, { action }),
 };
 
 // ============ ALUMNI APIs ============
@@ -175,6 +203,10 @@ export const alumniAPI = {
 
   // Update profile
   updateProfile: (data) => api.put("/alumni/profile", data),
+
+  createReferral: (data) => api.post("/alumni/referrals", data),
+  getMyReferrals: () => api.get("/alumni/referrals"),
+  deleteReferral: (id) => api.delete(`/alumni/referrals/${id}`),
 };
 
 // Job APIs

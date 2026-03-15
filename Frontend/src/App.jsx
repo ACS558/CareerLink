@@ -16,6 +16,7 @@ import RegisterAlumni from "./pages/auth/RegisterAlumni";
 import StudentDashboard from "./pages/student/StudentDashboard";
 import StudentProfile from "./pages/student/StudentProfile";
 import MyPlacements from "./pages/student/MyPlacements";
+import BrowseReferrals from "./pages/student/BrowseReferrals";
 
 // Recruiter Pages
 import RecruiterDashboard from "./pages/recruiter/RecruiterDashboard";
@@ -33,10 +34,15 @@ import ManageAlumni from "./pages/admin/ManageAlumni";
 import ManageApplications from "./pages/admin/ManageApplications";
 import AnalyticsPage from "./pages/admin/AnalyticsPage";
 import AdminJobDetails from "./pages/admin/AdminJobDetails";
+import AdminManagement from "./pages/admin/AdminManagement";
+import PendingReferrals from "./pages/admin/PendingReferrals";
+import ManageReferrals from "./pages/admin/ManageReferrals";
 
 // Alumni Pages
 import AlumniDashboard from "./pages/alumni/AlumniDashboard";
 import AlumniProfile from "./pages/alumni/AlumniProfile";
+import PostReferral from "./pages/alumni/PostReferral";
+import MyReferrals from "./pages/alumni/MyReferrals";
 
 // Other
 import Unauthorized from "./pages/Unauthorized";
@@ -159,6 +165,14 @@ const App = () => {
           element={
             <ProtectedRoute allowedRoles={["student"]}>
               <FeedPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/student/referrals"
+          element={
+            <ProtectedRoute allowedRoles={["student"]}>
+              <BrowseReferrals />
             </ProtectedRoute>
           }
         />
@@ -303,6 +317,31 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/admin/admin-management"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/referrals/pending"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <PendingReferrals />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/referrals"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <ManageReferrals />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Alumni Routes */}
         <Route
@@ -326,6 +365,23 @@ const App = () => {
           element={
             <ProtectedRoute allowedRoles={["alumni"]}>
               <FeedPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/alumni/post-referral"
+          element={
+            <ProtectedRoute allowedRoles={["alumni"]}>
+              <PostReferral />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/alumni/referrals"
+          element={
+            <ProtectedRoute allowedRoles={["alumni"]}>
+              <MyReferrals />
             </ProtectedRoute>
           }
         />

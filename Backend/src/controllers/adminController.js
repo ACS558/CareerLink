@@ -7,10 +7,12 @@ import { validatePhone } from "../utils/profileHelpers.js";
 import {
   createNotification,
   notificationTemplates,
+  createBulkNotifications,
 } from "../services/notificationService.js";
 import ExcelJS from "exceljs";
 import Job from "../models/Job.js";
 import Application from "../models/Application.js";
+import Referral from "../models/Referral.js";
 
 // @desc    Get admin profile
 // @route   GET /api/admin/profile
@@ -1233,6 +1235,212 @@ export const exportJobApplications = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to export applications",
+    });
+  }
+};
+
+export const createAdmin = async (req, res) => {
+  try {
+    const { email, password, name, department } = req.body;
+
+    const existingUser = await User.findOne({ email });
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User already exists",
+      });
+    }
+
+    const user = await User.create({
+      email,
+      password,
+      role: "admin",
+      isVerified: true,
+      isActive: true,
+    });
+
+    const admin = await Admin.create({
+      userId: user._id,
+      roleLevel: "admin",
+      personalInfo: {
+        name,
+        department,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Admin created successfully",
+      admin,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to create admin",
+    });
+  }
+};
+
+export const getAllAdmins = async (req, res) => {
+  const admins = await Admin.find().populate("userId", "email");
+
+  res.json({
+    success: true,
+    admins,
+  });
+};
+
+export const deleteAdmin = async (req, res) => {
+  const { id } = req.params;
+
+  const admin = await Admin.findById(id);
+
+  if (!admin) {
+    return res.status(404).json({
+      message: "Admin not found",
+    });
+  }
+
+  if (admin.roleLevel === "super_admin") {
+    const count = await Admin.countDocuments({
+      roleLevel: "super_admin",
+    });
+
+    if (count <= 1) {
+      return res.status(400).json({
+        message: "Cannot delete last Super Admin",
+      });
+    }
+  }
+
+  await User.findByIdAndDelete(admin.userId);
+  await Admin.findByIdAndDelete(id);
+
+  res.json({
+    success: true,
+    message: "Admin deleted successfully",
+  });
+};
+
+export const getPendingReferrals = async (req, res) => {
+  try {
+    const referrals = await Referral.find({ approvalStatus: "pending" })
+      .populate("alumniId")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      referrals,
+    });
+  } catch (error) {
+    console.error("Get pending referrals error:", error); // ADD THIS
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch pending referrals",
+    });
+  }
+};
+export const getAllReferrals = async (req, res) => {
+  try {
+    const referrals = await Referral.find()
+      .populate("alumniId")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      referrals,
+    });
+  } catch (error) {
+    console.error("Get referrals error:", error); // ADD THIS
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch referrals",
+    });
+  }
+};
+export const verifyReferral = async (req, res) => {
+  try {
+    const { action, rejectionReason } = req.body;
+
+    const referral = await Referral.findById(req.params.id).populate({
+      path: "alumniId",
+      populate: { path: "userId" },
+    });
+
+    if (!referral) {
+      return res.status(404).json({
+        success: false,
+        message: "Referral not found",
+      });
+    }
+
+    const adminId = req.user.roleDoc._id;
+
+    if (action === "approve") {
+      referral.approvalStatus = "approved";
+      referral.approvedBy = adminId;
+      referral.approvedAt = new Date();
+    } else {
+      referral.approvalStatus = "rejected";
+      referral.rejectionReason = rejectionReason;
+      referral.isActive = false;
+    }
+
+    await referral.save();
+
+    const io = req.app.get("io");
+
+    const alumniUserId = referral.alumniId.userId._id;
+
+    // ✅ Notify alumni
+    await createNotification(
+      {
+        userId: alumniUserId,
+        userRole: "alumni",
+        type: action === "approve" ? "referral_approved" : "referral_rejected",
+        title:
+          action === "approve"
+            ? "Referral Approved 🎉"
+            : "Referral Rejected ❌",
+        message:
+          action === "approve"
+            ? `${referral.company} referral approved`
+            : `${referral.company} referral rejected`,
+      },
+      io,
+    );
+
+    // ✅ Notify students if approved
+    if (action === "approve") {
+      const students = await Student.find({ accountStatus: "active" }).select(
+        "userId",
+      );
+
+      const studentNotifications = students.map((student) => ({
+        userId: student.userId,
+        userRole: "student",
+        type: "new_referral_posted",
+        title: "🎯 New Referral Opportunity",
+        message: `${referral.company} is hiring for ${referral.role}`,
+        actionUrl: `/student/referrals/${referral._id}`,
+        priority: "high",
+      }));
+
+      await createBulkNotifications(studentNotifications, io);
+    }
+
+    res.json({
+      success: true,
+      message: `Referral ${action}d successfully`,
+      referral,
+    });
+  } catch (error) {
+    console.error("Verify referral error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to verify referral",
     });
   }
 };

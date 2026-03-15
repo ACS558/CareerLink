@@ -34,6 +34,19 @@ class SocketClient {
       console.log("📍 Socket ID:", this.socket.id);
     });
 
+    this.socket.on("new_notification", (data) => {
+      console.log("🔔 New notification:", data);
+
+      const audio = new Audio("/sounds/notification.mp3");
+      audio.play().catch(() => {});
+
+      if (Notification.permission === "granted") {
+        new Notification(data.title || "CareerLink", {
+          body: data.message,
+          icon: "/logo.png",
+        });
+      }
+    });
     this.socket.on("disconnect", (reason) => {
       console.log("❌ Socket disconnected:", reason);
     });

@@ -16,11 +16,18 @@ import {
   getAdminJobDetails,
   adminUpdateApplicationStatus,
   exportJobApplications,
+  createAdmin,
+  getAllAdmins,
+  deleteAdmin,
+  getPendingReferrals,
+  getAllReferrals,
+  verifyReferral,
 } from "../controllers/adminController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
 import { roleMiddleware } from "../middleware/roleMiddleware.js";
 import { getAllApplicationsAdmin } from "../controllers/applicationController.js";
 import { bulkUpdateApplications } from "../controllers/applicationController.js";
+import { superAdminOnly } from "../middleware/superAdminMiddleware.js";
 
 import {
   getAllJobsAdmin,
@@ -113,4 +120,16 @@ router.patch(
   roleMiddleware(["admin"]),
   bulkUpdateApplications,
 );
+
+router.post("/admins", superAdminOnly, createAdmin);
+
+router.get("/admins", superAdminOnly, getAllAdmins);
+
+router.delete("/admins/:id", superAdminOnly, deleteAdmin);
+
+router.get("/referrals/pending", getPendingReferrals);
+
+router.get("/referrals", getAllReferrals);
+
+router.put("/referrals/:id/verify", verifyReferral);
 export default router;

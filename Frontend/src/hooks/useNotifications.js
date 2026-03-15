@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { notificationAPI } from "../services/api";
 import socket from "../socket/socketClient";
 
@@ -6,55 +6,53 @@ export const useNotifications = () => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const soundRef = useRef(new Audio("/sounds/notification.mp3"));
+
+  const isInitialLoad = useRef(true);
 
   // Fetch initial data
   useEffect(() => {
-    fetchNotifications({ limit: 10 });
-    fetchUnreadCount();
+    const init = async () => {
+      await fetchNotifications({ limit: 10 });
+      await fetchUnreadCount();
+
+      // Mark initial load complete
+      isInitialLoad.current = false;
+    };
+
+    init();
   }, []);
 
   // ✅ FIX: Listen for real-time updates - wait for socket to connect
   useEffect(() => {
+    const socketInstance = socket.getSocket();
+
+    if (!socketInstance) {
+      console.log("❌ Socket not initialized");
+      return;
+    }
+
     const handleNewNotification = (data) => {
-      console.log("🔔 useNotifications: NEW NOTIFICATION RECEIVED!", data);
+      console.log("🔔 NEW NOTIFICATION:", data);
+
       setUnreadCount(data.unreadCount);
       setNotifications((prev) => [data.notification, ...prev]);
-    };
 
-    // ✅ Wait for socket connection before adding listener
-    const setupListener = () => {
-      const socketInstance = socket.getSocket();
-
-      if (!socketInstance) {
-        console.log("⏳ Socket not ready, will retry...");
-        // Retry after 500ms
-        setTimeout(setupListener, 500);
-        return;
-      }
-
-      if (!socketInstance.connected) {
-        console.log("⏳ Socket not connected, waiting...");
-        // Wait for connection
-        socketInstance.once("connect", () => {
-          console.log("✅ Socket connected, adding notification listener");
-          socketInstance.on("new_notification", handleNewNotification);
+      // 🔊 Play sound
+      if (!isInitialLoad.current) {
+        soundRef.current.currentTime = 0;
+        soundRef.current.play().catch(() => {
+          console.log("Sound blocked by browser");
         });
-      } else {
-        console.log(
-          "✅ Socket already connected, adding notification listener",
-        );
-        socketInstance.on("new_notification", handleNewNotification);
       }
     };
 
-    setupListener();
+    console.log("✅ Attaching notification listener");
 
-    // Cleanup
+    socketInstance.on("new_notification", handleNewNotification);
+
     return () => {
-      const socketInstance = socket.getSocket();
-      if (socketInstance) {
-        socketInstance.off("new_notification", handleNewNotification);
-      }
+      socketInstance.off("new_notification", handleNewNotification);
     };
   }, []);
 

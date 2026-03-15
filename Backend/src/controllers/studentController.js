@@ -8,6 +8,7 @@ import {
   validateURL,
   validateGraduationYear,
 } from "../utils/profileHelpers.js";
+import Referral from "../models/Referral.js";
 
 // @desc    Get student profile
 // @route   GET /api/student/profile
@@ -431,6 +432,26 @@ export const requestAccountExtension = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to submit request",
+    });
+  }
+};
+export const getApprovedReferrals = async (req, res) => {
+  try {
+    const referrals = await Referral.find({
+      approvalStatus: "approved",
+      isActive: true,
+    })
+      .populate("alumniId")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      referrals,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch referrals",
     });
   }
 };

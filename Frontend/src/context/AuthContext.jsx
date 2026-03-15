@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import socket from "../socket/socketClient";
+import { notificationAPI } from "../services/api";
 
 const AuthContext = createContext();
 
@@ -16,6 +17,12 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission !== "granted") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   // Initialize on mount
   useEffect(() => {
@@ -35,7 +42,7 @@ export const AuthProvider = ({ children }) => {
     setLoading(false);
   }, []);
 
-  const login = (token, userData) => {
+  const login = async (token, userData, lastLogin) => {
     console.log("✅ AuthContext: Login called with user:", userData);
 
     localStorage.setItem("token", token);
@@ -43,6 +50,38 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem("email", userData.email);
 
     setUser(userData);
+    // 🔔 Check missed notifications
+    if (lastLogin) {
+      try {
+        const res = await notificationAPI.getNotifications({
+          limit: 20,
+          page: 1,
+        });
+
+        console.log("📥 Notifications fetched:", res.data.notifications);
+        console.log("🕒 Last login used for filter:", lastLogin);
+
+        const newNotifications = res.data.notifications.filter(
+          (n) => new Date(n.createdAt) > new Date(lastLogin),
+        );
+
+        console.log("🔔 Notifications after login:", newNotifications);
+
+        if (newNotifications.length > 0) {
+          const audio = new Audio("/sounds/notification.mp3");
+          audio.play();
+
+          if (Notification.permission === "granted") {
+            new Notification("CareerLink", {
+              body: `You have ${newNotifications.length} new notifications`,
+              icon: "/logo.png",
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Missed notifications check failed", error);
+      }
+    }
 
     // ✅ CONNECT SOCKET AFTER LOGIN
     setTimeout(() => {

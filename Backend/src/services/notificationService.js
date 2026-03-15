@@ -69,6 +69,69 @@ export const createNotification = async (
   }
 };
 
+export const createBulkNotifications = async (notifications, io = null) => {
+  try {
+    // Create all notifications at once
+    const createdNotifications = await Notification.insertMany(notifications);
+
+    console.log(`📬 ${createdNotifications.length} bulk notifications created`);
+
+    // ✅ EMIT REAL-TIME NOTIFICATIONS VIA SOCKET
+    if (io) {
+      // Group notifications by userId for efficient socket emission
+      const notificationsByUser = {};
+
+      createdNotifications.forEach((notification) => {
+        const userId = notification.userId.toString();
+        if (!notificationsByUser[userId]) {
+          notificationsByUser[userId] = [];
+        }
+        notificationsByUser[userId].push(notification);
+      });
+
+      // Emit to each user
+      for (const [userId, userNotifications] of Object.entries(
+        notificationsByUser,
+      )) {
+        try {
+          // Get unread count for this user
+          const unreadCount = await Notification.countDocuments({
+            userId,
+            isRead: false,
+          });
+
+          // Emit the latest notification to the user's room
+          const latestNotification = userNotifications[0];
+          io.to(userId).emit("new_notification", {
+            notification: {
+              _id: latestNotification._id,
+              type: latestNotification.type,
+              title: latestNotification.title,
+              message: latestNotification.message,
+              priority: latestNotification.priority,
+              actionUrl: latestNotification.actionUrl,
+              createdAt: latestNotification.createdAt,
+            },
+            unreadCount,
+          });
+        } catch (socketError) {
+          console.error(`Socket emit error for user ${userId}:`, socketError);
+          // Continue with other users
+        }
+      }
+
+      console.log(
+        `🔔 Bulk real-time notifications sent to ${Object.keys(notificationsByUser).length} users`,
+      );
+    }
+
+    return createdNotifications;
+  } catch (error) {
+    console.error("Create bulk notifications error:", error);
+    return [];
+  }
+};
+
 // Notification templates
 export const notificationTemplates = {
   // Student notifications
@@ -166,6 +229,66 @@ export const notificationTemplates = {
     type: "placement_offer",
     title: "🎉 New Job Offer!",
     message: `Congratulations! You've been selected for ${jobTitle} at ${companyName}. Check "My Placements" to manage your offer.`,
+    priority: "high",
+  }),
+
+  // ✅ NEW: Feed Post Notifications
+  newPostFromAdmin: (content) => ({
+    type: "new_post",
+    title: "📢 New Announcement from Admin",
+    message: `Admin posted: ${content.substring(0, 80)}${content.length > 80 ? "..." : ""}`,
+    priority: "high",
+  }),
+
+  newPostFromRecruiter: (companyName, content) => ({
+    type: "new_post",
+    title: "💼 New Update from Recruiter",
+    message: `${companyName} posted: ${content.substring(0, 80)}${content.length > 80 ? "..." : ""}`,
+    priority: "medium",
+  }),
+
+  newPostFromAlumni: (authorName, content) => ({
+    type: "new_post",
+    title: "🎓 New Post from Alumni",
+    message: `${authorName} shared: ${content.substring(0, 80)}${content.length > 80 ? "..." : ""}`,
+    priority: "medium",
+  }),
+  newPostFromRecruiterToAdmin: (companyName, content) => ({
+    type: "new_post_admin",
+    title: "💼 New Recruiter Post",
+    message: `${companyName} posted: ${content.substring(0, 80)}${content.length > 80 ? "..." : ""}`,
+    priority: "medium",
+  }),
+
+  newPostFromAlumniToAdmin: (authorName, content) => ({
+    type: "new_post_admin",
+    title: "🎓 New Alumni Post",
+    message: `${authorName} shared: ${content.substring(0, 80)}${content.length > 80 ? "..." : ""}`,
+    priority: "medium",
+  }),
+
+  newReferralPending: (company, role) => ({
+    type: "new_referral_pending",
+    title: "📌 New Referral Pending Approval",
+    message: `${company} referral for ${role} is awaiting approval.`,
+    priority: "high",
+  }),
+  referralApproved: (company) => ({
+    type: "referral_approved",
+    title: "Referral Approved 🎉",
+    message: `Your referral for ${company} has been approved.`,
+    priority: "high",
+  }),
+  referralRejected: (company, reason) => ({
+    type: "referral_rejected",
+    title: "Referral Rejected ❌",
+    message: `Your referral for ${company} was rejected. Reason: ${reason}`,
+    priority: "high",
+  }),
+  newReferralPosted: (company, role) => ({
+    type: "new_referral_posted",
+    title: "🎯 New Referral Opportunity",
+    message: `${company} is offering a referral for ${role}.`,
     priority: "high",
   }),
 };

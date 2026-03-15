@@ -26,14 +26,17 @@ const Login = () => {
 
     try {
       const response = await authAPI.login(formData);
-      const { token, user } = response.data;
+      const { token, user, lastLogin } = response.data;
+
+      console.log("🟢 Login response:", response.data);
+      console.log("🕒 Last login from backend:", lastLogin);
 
       // ✅ CONNECT SOCKET IMMEDIATELY AFTER LOGIN
       console.log("🔌 Connecting to Socket.IO...");
       socket.connect(token);
 
       toast.success("Login successful!");
-      login(token, user);
+      login(token, user, lastLogin);
     } catch (error) {
       console.error("Login error:", error);
       toast.error(error.response?.data?.message || "Login failed");
