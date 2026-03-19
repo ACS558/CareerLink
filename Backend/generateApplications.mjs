@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
-
+import dotenv from "dotenv";
+dotenv.config();
 // ─── REPLACE WITH YOUR CONNECTION STRING ─────────────────────────────────────
-const MONGO_URI =
-  "mongodb+srv://Incampus2026:Incampus2026@incampus.fszmpyc.mongodb.net/careerlink_db?appName=Incampus";
+const MONGO_URI = process.env.MONGODB_URI;
 
-const JOB_ID = "69b68043ffbb018b3531c9cb";
-const RECRUITER_ID = "69b1ff3d40aab443ca65a61b";
+const JOB_ID = "";
+const RECRUITER_ID = "";
 
 // ─── HELPER DATA ─────────────────────────────────────────────────────────────
 const strengths = [

@@ -1,11 +1,11 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
+import dotenv from "dotenv";
+dotenv.config();
 
 // ─── DB CONNECTION ───────────────────────────────────────────────────────────
 // Replace with your actual MongoDB connection string
-const MONGO_URI =
-  "mongodb+srv://Incampus2026:Incampus2026@incampus.fszmpyc.mongodb.net/careerlink_db?appName=Incampus";
-
+const MONGO_URI = process.env.MONGODB_URI;
 // ─── HELPER DATA ─────────────────────────────────────────────────────────────
 const firstNames = [
   "Arun",
