@@ -4,8 +4,10 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // ─── DB CONNECTION ───────────────────────────────────────────────────────────
+
 // Replace with your actual MongoDB connection string
 const MONGO_URI = process.env.MONGODB_URI;
+
 // ─── HELPER DATA ─────────────────────────────────────────────────────────────
 const firstNames = [
   "Arun",
