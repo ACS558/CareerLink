@@ -49,12 +49,37 @@ const ManageStudents = () => {
     setCurrentPage(1);
   };
 
+  // Pagination helper - show limited page numbers
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - 2);
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start < maxVisible - 1) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-8">
+    <div className="h-screen flex flex-col bg-gray-100">
+      {/* Full width Navbar */}
+      <div className="flex-shrink-0">
+        <Navbar />
+      </div>
+
+      {/* Sidebar + Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Sidebar */}
+        <div className="w-64 flex-shrink-0 overflow-y-auto bg-white shadow-md">
+          <Sidebar />
+        </div>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-8">
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900">
               Manage Students 👥
@@ -117,7 +142,7 @@ const ManageStudents = () => {
           </div>
 
           {/* Students Table */}
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="bg-white rounded-lg shadow-md overflow-hidden w-full">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -236,9 +261,23 @@ const ManageStudents = () => {
               </table>
             </div>
 
-            {/* Pagination */}
+            {/* Pagination - smart with limited page numbers */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-center space-x-2 px-6 py-4 border-t">
+              <div className="flex items-center justify-center gap-1 px-6 py-4 border-t flex-wrap">
+                {/* First page */}
+                {currentPage > 3 && (
+                  <>
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      className="px-3 py-1 border rounded-lg text-sm hover:bg-gray-50"
+                    >
+                      1
+                    </button>
+                    <span className="text-gray-400 text-sm">...</span>
+                  </>
+                )}
+
+                {/* Prev button */}
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
@@ -246,17 +285,23 @@ const ManageStudents = () => {
                 >
                   ← Prev
                 </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                  (page) => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={`px-3 py-1 rounded-lg text-sm ${currentPage === page ? "bg-primary-600 text-white" : "border hover:bg-gray-50"}`}
-                    >
-                      {page}
-                    </button>
-                  ),
-                )}
+
+                {/* Page numbers - only show 5 at a time */}
+                {getPageNumbers().map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-3 py-1 rounded-lg text-sm ${
+                      currentPage === page
+                        ? "bg-primary-600 text-white"
+                        : "border hover:bg-gray-50"
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                {/* Next button */}
                 <button
                   onClick={() =>
                     setCurrentPage((p) => Math.min(totalPages, p + 1))
@@ -266,6 +311,19 @@ const ManageStudents = () => {
                 >
                   Next →
                 </button>
+
+                {/* Last page */}
+                {currentPage < totalPages - 2 && (
+                  <>
+                    <span className="text-gray-400 text-sm">...</span>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="px-3 py-1 border rounded-lg text-sm hover:bg-gray-50"
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
