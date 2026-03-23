@@ -7,23 +7,21 @@ export const useNotifications = () => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const soundRef = useRef(new Audio("/sounds/notification.mp3"));
-
   const isInitialLoad = useRef(true);
+  const shownNotificationsRef = useRef(new Set()); // ✅ Track shown notifications
 
   // Fetch initial data
   useEffect(() => {
     const init = async () => {
       await fetchNotifications({ limit: 10 });
       await fetchUnreadCount();
-
-      // Mark initial load complete
       isInitialLoad.current = false;
     };
 
     init();
   }, []);
 
-  // ✅ FIX: Listen for real-time updates - wait for socket to connect
+  // ✅ Listen for real-time updates with duplicate prevention
   useEffect(() => {
     const socketInstance = socket.getSocket();
 
@@ -35,15 +33,41 @@ export const useNotifications = () => {
     const handleNewNotification = (data) => {
       console.log("🔔 NEW NOTIFICATION:", data);
 
+      const notificationId = data.notification._id;
+
+      // ✅ Skip if we've already shown this notification
+      if (shownNotificationsRef.current.has(notificationId)) {
+        console.log("⏭️ Skipping duplicate notification:", notificationId);
+        return;
+      }
+
+      // ✅ Check if notification is ACTUALLY NEW (created in last 10 seconds)
+      const notificationAge =
+        Date.now() - new Date(data.notification.createdAt).getTime();
+      const isReallyNew = notificationAge < 10000; // 10 seconds
+
+      // Mark as shown
+      shownNotificationsRef.current.add(notificationId);
+
+      // Update state
       setUnreadCount(data.unreadCount);
       setNotifications((prev) => [data.notification, ...prev]);
 
-      // 🔊 Play sound
-      if (!isInitialLoad.current) {
+      // 🔊 Only play sound and show popup for ACTUALLY NEW notifications
+      if (!isInitialLoad.current && isReallyNew) {
+        // Play sound
         soundRef.current.currentTime = 0;
         soundRef.current.play().catch(() => {
           console.log("Sound blocked by browser");
         });
+
+        // Show browser notification
+        if (Notification.permission === "granted") {
+          new Notification(data.notification.title || "CareerLink", {
+            body: data.notification.message,
+            icon: "/logo.png",
+          });
+        }
       }
     };
 

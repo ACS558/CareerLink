@@ -3,6 +3,7 @@ import { io } from "socket.io-client";
 class SocketClient {
   constructor() {
     this.socket = null;
+    this.shownNotifications = new Set(); // Track shown notifications
   }
 
   connect(token) {
@@ -34,19 +35,64 @@ class SocketClient {
       console.log("📍 Socket ID:", this.socket.id);
     });
 
+    // ✅ Handle browser notifications here (separate from UI updates)
     this.socket.on("new_notification", (data) => {
-      console.log("🔔 New notification:", data);
+      console.log("🔔 New notification received:", data);
 
+      // Get notification data (handle both structures)
+      const notification = data.notification || data;
+      const notificationId = notification._id;
+
+      // Skip if already shown
+      if (this.shownNotifications.has(notificationId)) {
+        console.log("⏭️ Already shown this notification");
+        return;
+      }
+
+      // Check if notification is new (created within last 10 seconds)
+      const notificationAge =
+        Date.now() - new Date(notification.createdAt).getTime();
+      const isNew = notificationAge < 10000; // 10 seconds
+
+      console.log("📊 Notification age:", notificationAge, "ms");
+
+      if (!isNew) {
+        console.log("⏭️ Notification too old, skipping browser popup");
+        return;
+      }
+
+      // Mark as shown
+      this.shownNotifications.add(notificationId);
+
+      // Play sound
       const audio = new Audio("/sounds/notification.mp3");
-      audio.play().catch(() => {});
+      audio.play().catch(() => {
+        console.log("🔇 Sound blocked by browser");
+      });
 
+      // Show browser notification
       if (Notification.permission === "granted") {
-        new Notification(data.title || "CareerLink", {
-          body: data.message,
+        const title = notification.title || "CareerLink";
+        const body = notification.message || "You have a new notification";
+
+        console.log("📢 Showing browser notification:", { title, body });
+
+        const browserNotif = new Notification(title, {
+          body: body,
           icon: "/logo.png",
+          badge: "/logo.png",
+          tag: notificationId,
         });
+
+        browserNotif.onclick = () => {
+          window.focus();
+          browserNotif.close();
+        };
+      } else {
+        console.log("❌ Notification permission:", Notification.permission);
       }
     });
+
     this.socket.on("disconnect", (reason) => {
       console.log("❌ Socket disconnected:", reason);
     });
@@ -63,6 +109,7 @@ class SocketClient {
       console.log("🔌 Disconnecting socket...");
       this.socket.disconnect();
       this.socket = null;
+      this.shownNotifications.clear(); // Clear tracking
     }
   }
 
@@ -91,10 +138,8 @@ class SocketClient {
   }
 }
 
-// ✅ CREATE AND EXPORT SINGLE INSTANCE
 const socketClient = new SocketClient();
 
-// ✅ MAKE AVAILABLE GLOBALLY FOR DEBUGGING
 if (typeof window !== "undefined") {
   window.socketClient = socketClient;
 }
