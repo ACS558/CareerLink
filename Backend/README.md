@@ -1421,10 +1421,6 @@ footer
 - `test`: Adding tests
 - `chore`: Maintenance tasks
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 👥 Authors
 
 **CareerLink Development Team**
@@ -1443,10 +1439,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - MongoDB Atlas for database hosting
 - Cloudinary for file storage solutions
 - All open-source contributors
-
-## 📞 Support
-
-For support, email: support@careerlink.com or create an issue in the repository.
 
 ## 🔗 Links
 
