@@ -678,10 +678,6 @@ footer
 - `test`: Adding tests
 - `chore`: Maintenance tasks
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## 👥 Authors
 
 **CareerLink Development Team**
