@@ -701,10 +701,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - All faculty members and staff who supported this project
 - The open-source community for the amazing tools and libraries
 
-## 📞 Support
-
-For support, email: support@careerlink.com or create an issue in the repository.
-
----
-
 **Made with ❤️ by CareerLink Team**
