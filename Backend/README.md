@@ -1440,15 +1440,6 @@ footer
 - Cloudinary for file storage solutions
 - All open-source contributors
 
-## 🔗 Links
-
-- **Frontend Repository**: [CareerLink Frontend](https://github.com/yourusername/careerlink-frontend)
-- **Live Frontend**: [https://career-link-frontend-henna.vercel.app](https://career-link-frontend-henna.vercel.app)
-- **Live Backend**: [https://careerlink-backend-itv6.onrender.com](https://careerlink-backend-itv6.onrender.com)
-- **API Documentation**: [Postman Collection](link-to-postman)
-
----
-
 **Made with ❤️ by CareerLink Team**
 
 *Last Updated: 2025*
